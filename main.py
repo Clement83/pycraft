@@ -9,16 +9,28 @@ import queue
 CHUNK_SIZE = 16
 RENDER_DISTANCE = 3
 BLOCK_HEIGHT = 20
+
+
 import time
 import ctypes
 from pyglet.gl import *
 
 class WaterPlane:
-    def __init__(self, height=0.0, size=1000.0):
+    def __init__(self, height=0.0, size=200.0):
         self.height = height
         self.size = size
 
-        # Vertex shader
+        # Créer un quad simple
+        s = self.size / 2
+        h = self.height
+        self.vertices = [
+            -s, h, -s,  # coin bas-gauche
+            -s, h,  s,  # coin haut-gauche
+             s, h,  s,  # coin haut-droite
+             s, h, -s   # coin bas-droite
+        ]
+
+        # Vertex shader (simple)
         vertex_src = """
         #version 120
         attribute vec3 position;
@@ -29,47 +41,24 @@ class WaterPlane:
         }
         """
 
-        # Fragment shader
+        # Fragment shader (scintillement pour effet vivant)
         fragment_src = """
         #version 120
         uniform float u_time;
         varying vec2 v_uv;
-
-        float rand(vec2 co){
-            return fract(sin(dot(co.xy, vec2(12.9898,78.233))) * 43758.5453);
-        }
-
         void main() {
-            float wave = sin(v_uv.x*10.0 + u_time*2.0)*0.05
-                    + cos(v_uv.y*12.0 + u_time*1.5)*0.05;
-            float noise = (rand(v_uv*10.0 + u_time) - 0.5) * 0.02;
-
-            float brightness = 0.6 + 0.2*sin(u_time*0.5 + v_uv.x*5.0);
-            vec3 color = vec3(0.2, 0.4, 0.8) * brightness;
-
-            float sparkle = smoothstep(0.02, 0.04, abs(sin(u_time*5.0 + v_uv.x*10.0)));
-            color += vec3(sparkle*0.2);
-
-            gl_FragColor = vec4(color, 0.5 + wave*0.2 + noise*0.3);
+            float flicker = 0.5 + 0.5 * sin(u_time*3.0 + gl_FragCoord.x*0.05 + gl_FragCoord.y*0.05);
+            vec3 color = vec3(0.2, 0.4, 0.8) * flicker;
+            gl_FragColor = vec4(color, 0.8);
         }
         """
 
-        # Compiler le shader
+        # Compiler shader
         self.program = self.create_shader(vertex_src, fragment_src)
         self.time_loc = glGetUniformLocation(self.program, b"u_time")
 
-        # Quad géant
-        s = self.size
-        h = self.height
-        self.vertices = [
-            -s, h, -s,  # coin bas-gauche
-            -s, h,  s,  # coin haut-gauche
-             s, h,  s,  # coin haut-droite
-             s, h, -s   # coin bas-droite
-        ]
-
-    def create_shader(self, vs_source: bytes, fs_source: bytes):
-        def compile_shader(src: bytes, shader_type):
+    def create_shader(self, vs_source, fs_source):
+        def compile_shader(src, shader_type):
             shader = glCreateShader(shader_type)
             src_buffer = ctypes.create_string_buffer(src.encode('utf-8'))
             src_ptr = ctypes.cast(ctypes.pointer(src_buffer), ctypes.POINTER(ctypes.c_char))
@@ -113,7 +102,10 @@ class WaterPlane:
 
         glUseProgram(self.program)
         t = time.time()
-        glUniform1f(self.time_loc, t)
+        glUniform1f(self.time_loc, t)  # Mise à jour du temps pour scintillement
+
+        # Désactiver le face culling pour voir le quad des deux côtés
+        glDisable(GL_CULL_FACE)
 
         glBegin(GL_QUADS)
         glVertex3f(self.vertices[0], self.vertices[1], self.vertices[2])
@@ -122,9 +114,11 @@ class WaterPlane:
         glVertex3f(self.vertices[9], self.vertices[10], self.vertices[11])
         glEnd()
 
+        # Restaurer le culling si nécessaire
+        glEnable(GL_CULL_FACE)
+
         glUseProgram(0)
         glDisable(GL_BLEND)
-
 
 class World:
     def __init__(self):
@@ -258,31 +252,49 @@ class Player:
             self.position[0] += dx
             self.position[1] += dy
             self.position[2] += dz
+            return
+
+        # Gravité
+        self.velocity[1] += self.gravity * dt
+
+        # Saut
+        if keys[key.SPACE] and self.on_ground:
+            self.velocity[1] = self.jump_speed
+            self.on_ground = False
+
+        # Vérifier si dans l'eau
+        in_water = self.position[1] < 0
+
+
+        # Appliquer flottabilité et résistance si dans l'eau
+        if in_water:
+            self.velocity[1] += 10.0 * dt    # poussée vers le haut
+            self.velocity[1] *= 0.5          # résistance verticale
+            speed_multiplier = 0.5           # résistance horizontale
+            # Monter avec SPACE
+            if keys[key.SPACE]:
+                self.velocity[1] += self.jump_speed  # ajuste la vitesse verticale selon le feeling
         else:
-            # Gravité
-            self.velocity[1] += self.gravity * dt
+            speed_multiplier = 1.0
 
-            # Saut
-            if keys[key.SPACE] and self.on_ground:
-                self.velocity[1] = self.jump_speed
-                self.on_ground = False
+        # Déplacement horizontal
+        self.move_with_collision(dx*speed_multiplier, 0, dz*speed_multiplier, world)
+        # Déplacement vertical
+        self.move_with_collision(0, self.velocity[1]*dt, 0, world)
 
-            # Déplacement horizontal et collision
-            self.move_with_collision(dx, 0, dz, world)
-
-            # Déplacement vertical et collision
-            self.move_with_collision(0, self.velocity[1]*dt, 0, world)
 
     def move_with_collision(self, dx, dy, dz, world):
+        import math
+
         half_width = 0.45
         height = 0.95
 
         # Déplacement sur X
         new_x = self.position[0] + dx
         blocked = False
-        for x in range(int(new_x - half_width), int(new_x + half_width) + 1):
-            for y in range(int(self.position[1]), int(self.position[1] + height) + 1):
-                for z in range(int(self.position[2] - half_width), int(self.position[2] + half_width) + 1):
+        for x in range(math.floor(new_x - half_width), math.ceil(new_x + half_width)):
+            for y in range(math.floor(self.position[1]), math.ceil(self.position[1] + height)):
+                for z in range(math.floor(self.position[2] - half_width), math.ceil(self.position[2] + half_width)):
                     if (x, y, z) in world.blocks:
                         blocked = True
         if not blocked:
@@ -291,21 +303,25 @@ class Player:
         # Déplacement sur Z
         new_z = self.position[2] + dz
         blocked = False
-        for x in range(int(self.position[0] - half_width), int(self.position[0] + half_width) + 1):
-            for y in range(int(self.position[1]), int(self.position[1] + height) + 1):
-                for z in range(int(new_z - half_width), int(new_z + half_width) + 1):
+        for x in range(math.floor(self.position[0] - half_width), math.ceil(self.position[0] + half_width)):
+            for y in range(math.floor(self.position[1]), math.ceil(self.position[1] + height)):
+                for z in range(math.floor(new_z - half_width), math.ceil(new_z + half_width)):
                     if (x, y, z) in world.blocks:
                         blocked = True
         if not blocked:
             self.position[2] = new_z
 
-        # Déplacement sur Y (gravité et saut)
+        # Déplacement sur Y (gravité et collisions)
         new_y = self.position[1] + dy
         self.on_ground = False
-        for x in range(int(self.position[0] - half_width), int(self.position[0] + half_width) + 1):
-            for y in range(int(new_y), int(new_y + height) + 1):
-                for z in range(int(self.position[2] - half_width), int(self.position[2] + half_width) + 1):
-                    if (x, y, z) in world.blocks:
+        y_start = math.floor(new_y - 0.01)
+        y_end = math.ceil(new_y + height + 0.01)
+
+        for x in range(math.floor(self.position[0] - half_width), math.ceil(self.position[0] + half_width)):
+            for y in range(y_start, y_end):
+                for z in range(math.floor(self.position[2] - half_width), math.ceil(self.position[2] + half_width)):
+                    block = world.blocks.get((x, y, z))
+                    if block:
                         if dy > 0:
                             new_y = y - height
                             self.velocity[1] = 0
@@ -313,7 +329,9 @@ class Player:
                             new_y = y + 1
                             self.velocity[1] = 0
                             self.on_ground = True
+
         self.position[1] = new_y
+
 
 
     def toggle_fly(self):
@@ -330,7 +348,7 @@ class Window(pyglet.window.Window):
         self.push_handlers(self.keys)
         pyglet.clock.schedule(self.update)
         self.set_exclusive_mouse(True)
-        self.water = WaterPlane(height=0.0, size=2000.0)
+        self.water = WaterPlane(size=2000.0)
 
     def on_resize(self, width, height):
         fb_w, fb_h = self.get_framebuffer_size()
@@ -367,7 +385,41 @@ class Window(pyglet.window.Window):
         gluLookAt(eye[0], eye[1], eye[2], center[0], center[1], center[2], 0,1,0)
         self.world.draw()
         self.water.draw()
+        # Filtre bleu sous-marin
+        if self.player.position[1] < 0:  # sous l'eau
+            self.draw_underwater_filter()
+        else:
+            glColor4f(1.0, 1.0, 1.0, 1.0)
         glPopMatrix()
+
+    def draw_underwater_filter(self):
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        glDisable(GL_DEPTH_TEST)  # Pour que le quad soit toujours visible
+
+        glMatrixMode(GL_PROJECTION)
+        glPushMatrix()
+        glLoadIdentity()
+        glOrtho(0, self.width, 0, self.height, -1, 1)
+        glMatrixMode(GL_MODELVIEW)
+        glPushMatrix()
+        glLoadIdentity()
+
+        glColor4f(0.0, 0.3, 0.6, 0.25)  # Bleu semi-transparent
+        glBegin(GL_QUADS)
+        glVertex2f(0, 0)
+        glVertex2f(self.width, 0)
+        glVertex2f(self.width, self.height)
+        glVertex2f(0, self.height)
+        glEnd()
+
+        glPopMatrix()
+        glMatrixMode(GL_PROJECTION)
+        glPopMatrix()
+        glMatrixMode(GL_MODELVIEW)
+        glEnable(GL_DEPTH_TEST)
+        glDisable(GL_BLEND)
+
     
     def on_key_press(self, symbol, modifiers):
         if symbol == key.T:
