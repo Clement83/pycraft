@@ -7,9 +7,9 @@ import threading
 import queue
 
 CHUNK_SIZE = 16
-RENDER_DISTANCE = 3
+RENDER_DISTANCE = 2
 BLOCK_HEIGHT = 20
-
+WORLD_SEED = 1000
 
 import time
 import ctypes
@@ -122,106 +122,142 @@ class WaterPlane:
 
 class World:
     def __init__(self):
-        self.chunks = {}
-        self.blocks = {}
-        self.batch = pyglet.graphics.Batch()
-        self.edge_batch = pyglet.graphics.Batch()
+        self.blocks = {}  # Pour collisions
+        self.chunks = {}  # {(cx, cz): {'blocks': dict, 'pending': list}}
+        self.chunk_batches = {}  # {(cx, cz): (block_batch, edge_batch)}
+        self.chunks_to_update = []  # Liste des chunks en cours d'apparition progressive
         self.chunk_queue = queue.Queue()  # Chunks générés par les threads
-        self.pending_blocks = []         # Blocs à ajouter progressivement
         self.textures = Textures()
 
     def update(self, player_pos):
         chunk_x = int(player_pos[0] // CHUNK_SIZE)
         chunk_z = int(player_pos[2] // CHUNK_SIZE)
 
-        # Générer les chunks manquants dans un thread
+        # Générer les chunks manquants
         for dx in range(-RENDER_DISTANCE, RENDER_DISTANCE+1):
             for dz in range(-RENDER_DISTANCE, RENDER_DISTANCE+1):
                 cx, cz = chunk_x + dx, chunk_z + dz
                 if (cx, cz) not in self.chunks:
                     threading.Thread(target=self.generate_chunk_thread, args=(cx, cz), daemon=True).start()
 
-        # Récupérer les chunks générés par les threads
+        # Récupérer les chunks générés
         while not self.chunk_queue.empty():
             cx, cz, chunk_blocks = self.chunk_queue.get()
-            self.chunks[(cx, cz)] = chunk_blocks
-            self.pending_blocks.extend(chunk_blocks.items())
+            pending = list(chunk_blocks.items())  # Liste des blocs à ajouter progressivement
+            self.chunks[(cx, cz)] = {'blocks': chunk_blocks, 'pending': pending}
+            self.chunks_to_update.append((cx, cz))
+            # Créer le batch vide pour ce chunk
+            self.chunk_batches[(cx, cz)] = (pyglet.graphics.Batch(), pyglet.graphics.Batch())
 
-        # Ajouter progressivement quelques blocs par frame pour éviter le freeze
-        blocks_per_frame = 800
-        for _ in range(min(blocks_per_frame, len(self.pending_blocks))):
-            pos, block_type = self.pending_blocks.pop(0)
-            self.add_block(pos, block_type)
+        # Ajouter progressivement les blocs par frame
+        blocks_per_frame = 100
+        chunks_done = []
+        for cx, cz in self.chunks_to_update[:]:  # copier la liste pour éviter modification en boucle
+            if (cx, cz) not in self.chunks:
+                chunks_done.append((cx, cz))
+                continue
+
+            chunk_data = self.chunks[(cx, cz)]
+            pending = chunk_data['pending']
+            block_batch, edge_batch = self.chunk_batches[(cx, cz)]
+
+            for _ in range(min(blocks_per_frame, len(pending))):
+                pos, block_type = pending.pop(0)
+                self.add_block_to_batch(pos, block_type, block_batch, edge_batch)
+                self.blocks[pos] = block_type
+
+            if not pending:
+                chunks_done.append((cx, cz))
+
+        # Retirer les chunks terminés ou supprimés
+        for chunk in chunks_done:
+            if chunk in self.chunks_to_update:
+                self.chunks_to_update.remove(chunk)
+
+        # Supprimer les chunks trop loin
+        self.cleanup_chunks(player_pos)
 
     def generate_chunk_thread(self, cx, cz):
-        """Génère les données d'un chunk dans un thread séparé."""
         chunk_blocks = {}
         for x in range(cx*CHUNK_SIZE, (cx+1)*CHUNK_SIZE):
             for z in range(cz*CHUNK_SIZE, (cz+1)*CHUNK_SIZE):
                 h = self.get_height(x, z)
                 for y in range(-BLOCK_HEIGHT, h+1):
-                    if y < 0: block_type = "water"
-                    elif y == 0: block_type = "dirt"
-                    elif y < h - 1: block_type = "stone" if h > 12 else "dirt"
-                    else: block_type = "snow" if h > 6 else "stone" if h > 3 else "grass"
+                    if y < 0:
+                        block_type = "water"
+                    elif y == 0:
+                        block_type = "water"
+                    elif y < h - 1:
+                        block_type = "stone" if h > 12 else "dirt"
+                    else:
+                        block_type = "snow" if h > 12 else "stone" if h > 6 else "grass" if h > 2 else "dirt"
                     chunk_blocks[(x, y, z)] = block_type
         self.chunk_queue.put((cx, cz, chunk_blocks))
 
     def get_height(self, x, z):
-        base = noise.pnoise2(x * 0.01, z * 0.01, octaves=3) * 50
-        detail = noise.pnoise2(x * 0.1, z * 0.1, octaves=2) * 5
+        base = noise.pnoise2(x * 0.01, z * 0.01, octaves=3, base=WORLD_SEED) * 50
+        detail = noise.pnoise2(x * 0.1, z * 0.1, octaves=2, base=WORLD_SEED) * 5
         return int(base + detail - 5) + 10
 
-    def add_block(self, position, block_type):
-        x, y, z = position
-        self.blocks[position] = block_type
-
-        # # Couleurs selon le type de bloc
-        # if block_type == "grass": color = (0.0, 0.5, 0.0) * 6
-        # elif block_type == "dirt": color = (0.5, 0.25, 0.0) * 6
-        # elif block_type == "water": color = (0.0, 0.0, 1.0) * 6
-        # elif block_type == "stone": color = (0.5, 0.5, 0.5) * 6
-        # elif block_type == "snow": color = (1.0, 1.0, 1.0) * 6
-        # else: color = (1.0, 0.0, 1.0) * 6
-
+    def add_block_to_batch(self, pos, block_type, block_batch, edge_batch):
+        x, y, z = pos
         texture = self.textures.get(block_type)
         if texture is None:
             return
 
-        # Définir les faces
         faces = [
-            ((0,0,1), [(x-0.5,y-0.5,z+0.5), (x+0.5,y-0.5,z+0.5), (x+0.5,y+0.5,z+0.5), (x-0.5,y+0.5,z+0.5)]),
-            ((0,0,-1), [(x+0.5,y-0.5,z-0.5), (x-0.5,y-0.5,z-0.5), (x-0.5,y+0.5,z-0.5), (x+0.5,y+0.5,z-0.5)]),
+            ((0,0,1), [(x-0.5,y-0.5,z+0.5),(x+0.5,y-0.5,z+0.5),(x+0.5,y+0.5,z+0.5),(x-0.5,y+0.5,z+0.5)]),
+            ((0,0,-1), [(x+0.5,y-0.5,z-0.5),(x-0.5,y-0.5,z-0.5),(x-0.5,y+0.5,z-0.5),(x+0.5,y+0.5,z-0.5)]),
             ((-1,0,0), [(x-0.5,y-0.5,z+0.5),(x-0.5,y+0.5,z+0.5),(x-0.5,y+0.5,z-0.5),(x-0.5,y-0.5,z-0.5)]),
             ((1,0,0), [(x+0.5,y-0.5,z-0.5),(x+0.5,y+0.5,z-0.5),(x+0.5,y+0.5,z+0.5),(x+0.5,y-0.5,z+0.5)]),
             ((0,1,0), [(x-0.5,y+0.5,z-0.5),(x-0.5,y+0.5,z+0.5),(x+0.5,y+0.5,z+0.5),(x+0.5,y+0.5,z-0.5)]),
             ((0,-1,0), [(x-0.5,y-0.5,z+0.5),(x-0.5,y-0.5,z-0.5),(x+0.5,y-0.5,z-0.5),(x+0.5,y-0.5,z+0.5)]),
         ]
 
-        uv_coords = [
-            0,0, 1,0, 1,1,  # triangle 1
-            1,1, 0,1, 0,0   # triangle 2
-        ]
+        uv_coords = [0,0, 1,0, 1,1, 1,1, 0,1, 0,0]
 
         for direction, verts in faces:
             neighbor = (x + direction[0], y + direction[1], z + direction[2])
             if neighbor not in self.blocks:
-                # 2 triangles par face
-                tri_verts = [*verts[0], *verts[1], *verts[2], *verts[2], *verts[3], *verts[0]]
-                self.batch.add(6, GL_TRIANGLES, pyglet.graphics.TextureGroup(texture),
-                            ('v3f', tri_verts),
-                            ('t2f', uv_coords))
+                tri_verts = [*verts[0],*verts[1],*verts[2], *verts[2],*verts[3],*verts[0]]
+                block_batch.add(6, GL_TRIANGLES, pyglet.graphics.TextureGroup(texture),
+                                ('v3f', tri_verts),
+                                ('t2f', uv_coords))
 
-                # Arêtes (pas besoin de changer)
-                self.edge_batch.add(8, GL_LINES, None,
-                                    ('v3f', (*verts[0],*verts[1],*verts[1],*verts[2],
-                                            *verts[2],*verts[3],*verts[3],*verts[0])),
-                                    ('c3f', (0.0,0.0,0.0)*8))
+                edge_batch.add(8, GL_LINES, None,
+                               ('v3f', (*verts[0],*verts[1],*verts[1],*verts[2],
+                                        *verts[2],*verts[3],*verts[3],*verts[0])),
+                               ('c3f', (0.0,0.0,0.0)*8))
 
-    def draw(self):
-        self.batch.draw()
-        glLineWidth(1.5)
-        self.edge_batch.draw()
+    def cleanup_chunks(self, player_pos):
+        to_delete = []
+        for (cx, cz) in self.chunks:
+            dx = (cx*CHUNK_SIZE + CHUNK_SIZE/2) - player_pos[0]
+            dz = (cz*CHUNK_SIZE + CHUNK_SIZE/2) - player_pos[2]
+            max_dist = CHUNK_SIZE * (RENDER_DISTANCE + 1)
+            if dx*dx + dz*dz > max_dist*max_dist:
+                to_delete.append((cx, cz))
+
+        for key in to_delete:
+            chunk_blocks = self.chunks.pop(key, {}).get('blocks', {})
+            for pos in chunk_blocks:
+                self.blocks.pop(pos, None)
+            self.chunk_batches.pop(key, None)
+            if key in self.chunks_to_update:
+                self.chunks_to_update.remove(key)
+
+    def draw(self, player_pos):
+        max_render_sq = (CHUNK_SIZE * RENDER_DISTANCE) ** 2
+        for (cx, cz), (block_batch, edge_batch) in self.chunk_batches.items():
+            chunk_center_x = (cx + 0.5) * CHUNK_SIZE
+            chunk_center_z = (cz + 0.5) * CHUNK_SIZE
+            dx = chunk_center_x - player_pos[0]
+            dz = chunk_center_z - player_pos[2]
+            if dx*dx + dz*dz > max_render_sq:
+                continue
+            block_batch.draw()
+            glLineWidth(1.5)
+            edge_batch.draw()
 
 class Player:
     def __init__(self, position=(0,2,0), rotation=(0,0)):
@@ -383,7 +419,7 @@ class Window(pyglet.window.Window):
         eye = (self.player.position[0], self.player.position[1] + 0.5, self.player.position[2])
         center = (eye[0]+look_x, eye[1]+look_y, eye[2]+look_z)
         gluLookAt(eye[0], eye[1], eye[2], center[0], center[1], center[2], 0,1,0)
-        self.world.draw()
+        self.world.draw(self.player.position)
         self.water.draw()
         # Filtre bleu sous-marin
         if self.player.position[1] < 0:  # sous l'eau
