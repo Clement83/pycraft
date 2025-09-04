@@ -9,7 +9,7 @@ import queue
 CHUNK_SIZE = 16
 RENDER_DISTANCE = 2
 BLOCK_HEIGHT = 20
-WORLD_SEED = 1000
+WORLD_SEED = 88
 
 import time
 import ctypes
@@ -183,14 +183,12 @@ class World:
             for z in range(cz*CHUNK_SIZE, (cz+1)*CHUNK_SIZE):
                 h = self.get_height(x, z)
                 for y in range(-BLOCK_HEIGHT, h+1):
-                    if y < 0:
-                        block_type = "water"
-                    elif y == 0:
+                    if y <= 0:
                         block_type = "water"
                     elif y < h - 1:
                         block_type = "stone" if h > 12 else "dirt"
                     else:
-                        block_type = "snow" if h > 12 else "stone" if h > 6 else "grass" if h > 2 else "dirt"
+                        block_type = "snow" if h > 12 else "stone" if h > 8 else "grass" if h > 4 else "dirt" if h > 2 else "water"
                     chunk_blocks[(x, y, z)] = block_type
         self.chunk_queue.put((cx, cz, chunk_blocks))
 
