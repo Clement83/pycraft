@@ -71,6 +71,8 @@ class Window(pyglet.window.Window):
         self.water.draw()
         if self.player.position[1] < 0:
             self.draw_underwater_filter()
+        else:
+            glColor4f(1.0, 1.0, 1.0, 1.0)  # couleur normale
         
         # Restaurer les matrices
         glMatrixMode(GL_MODELVIEW)

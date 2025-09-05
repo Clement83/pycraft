@@ -4,6 +4,7 @@ import noise
 from pyglet.gl import *
 from config import CHUNK_SIZE, RENDER_DISTANCE, BLOCK_HEIGHT, WORLD_SEED
 from core.textures import Textures
+from core.vegetation import Vegetation 
 
 class World:
     def __init__(self):
@@ -13,6 +14,7 @@ class World:
         self.chunks_to_update = []
         self.chunk_queue = queue.Queue()
         self.textures = Textures()
+        self.vegetation = Vegetation(seed=WORLD_SEED)
 
 
 
@@ -90,6 +92,8 @@ class World:
                     else:
                         # Bloc de surface : prend la texture correspondant au biome
                         block_type = biome
+                        if self.vegetation.has_tree(x, z, biome):
+                            self.vegetation.generate(chunk_blocks, x, z, h+1, biome)
 
                     chunk_blocks[(x, y, z)] = block_type
 
