@@ -63,7 +63,7 @@ class World:
         return f"Biome: {biome.capitalize()}"
         
     
-    def generate_chunk_thread(self, cx, cz, biome_scale=500.0, biome_octaves=4):
+    def generate_chunk_thread(self, cx, cz, biome_octaves=4):
         """
         Génère un chunk avec biomes paramétrables.
         cx, cz : coordonnées du chunk
@@ -74,7 +74,7 @@ class World:
         for x in range(cx*CHUNK_SIZE, (cx+1)*CHUNK_SIZE):
             for z in range(cz*CHUNK_SIZE, (cz+1)*CHUNK_SIZE):
                 h = self.get_height(x, z)
-                biome = self.getBiome(x, z, seed=WORLD_SEED, biome_scale=biome_scale, octaves=biome_octaves)
+                biome = self.getBiome(x, z, seed=WORLD_SEED, octaves=biome_octaves)
 
                 for y in range(-BLOCK_HEIGHT, h+1):
                     # Couches basses
@@ -163,30 +163,36 @@ class World:
             edge_batch.draw()
 
 
-    def getBiome(self, x, z, seed=0, biome_scale=500.0, octaves=3):
+    def normalize_to_uniform_simple(self, noise_value):
         """
-        Calcule le biome à la position (x, z) avec biomes équilibrés.
-
-        biome_scale : plus petit = biomes plus fréquents
-        octaves : complexité du bruit
+        Version simplifiée : transformation par fonction puissance.
         """
-        # --- Température : mélange multi-échelle ---
-        temp = 0.7 * noise.pnoise2(x/biome_scale, z/biome_scale, octaves=octaves, base=seed) \
-            + 0.3 * noise.pnoise2(x/(biome_scale/5), z/(biome_scale/5), octaves=1, base=seed+50)
-        temp = (temp + 1) / 2  # 0..1
-        temp = temp ** 1.1     # étirer légèrement les valeurs basses pour plus de froid
+        normalized = (noise_value + 1) / 2  # 0..1
+        
+        # Transformation en forme de S pour étaler vers les extrêmes
+        # Ajustez l'exposant selon vos besoins
+        if normalized < 0.5:
+            return 2 * (normalized ** 1.5)  # Étire vers 0
+        else:
+            return 1 - 2 * ((1-normalized) ** 1.5)  # Étire vers 1
 
-        # --- Humidité : mélange multi-échelle ---
-        humid = 0.7 * noise.pnoise2((x+1000)/biome_scale, (z+1000)/biome_scale, octaves=octaves, base=seed+10) \
-            + 0.3 * noise.pnoise2((x+1000)/(biome_scale/5), (z+1000)/(biome_scale/5), octaves=1, base=seed+60)
-        humid = (humid + 1) / 2  # 0..1
-        humid = humid ** 1.05    # étirer légèrement les valeurs basses pour plus de sec
-
-        # --- Définition des biomes ---
+    def getBiome(self, x, z, seed=0, biome_scale=1000.0, octaves=3):
+        """
+        Version avec transformation simple mais efficace.
+        """
+        # Génération du bruit
+        temp_raw = 0.7 * noise.pnoise2(x/biome_scale, z/biome_scale, octaves=octaves, base=seed) \
+                + 0.3 * noise.pnoise2(x/(biome_scale/5), z/(biome_scale/5), octaves=5, base=seed+50)
+        
+        humid_raw = 0.7 * noise.pnoise2((x+1000)/biome_scale, (z+1000)/biome_scale, octaves=octaves, base=seed+10) \
+                + 0.3 * noise.pnoise2((x+1000)/(biome_scale/5), (z+1000)/(biome_scale/5), octaves=5, base=seed+60)
+        
+        # Transformation pour distribution plus uniforme
+        temp = self.normalize_to_uniform_simple(temp_raw)
+        humid = self.normalize_to_uniform_simple(humid_raw)
+        
+        # Vos seuils de biomes (maintenant mieux distribués)
         if temp < 0.4:
-            if humid < 0.5:
-                return "tundra"
-            else:
                 return "snow"
         elif temp < 0.6:
             if humid < 0.5:
@@ -201,10 +207,8 @@ class World:
             else:
                 return "forest"
         else:
-            if humid < 0.3:
+            if humid < 0.5:
                 return "desert"
-            elif humid < 0.6:
-                return "savanna"
             else:
                 return "jungle"
 
