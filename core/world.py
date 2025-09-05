@@ -194,20 +194,22 @@ class World:
         humid = self.normalize_to_uniform_simple(humid_raw)
         
         # Vos seuils de biomes (maintenant mieux distribués)
-        if temp < 0.25:
+        if temp < 0.35:
                 return "snow"
-        elif temp < 0.5:
-            if humid < 0.5:
+        elif temp < 0.55:
+            if humid < 0.3:
                 return "taiga"
-            else:
+            elif humid < 0.7:
                 return "forest"
-        elif temp < 0.75:
-            if humid < 0.5:
-                return "savanna"
             else:
                 return "plains"
+        elif temp < 0.65:
+            if humid < 0.6:
+                return "savanna"
+            else:
+                return "desert"
         else:
-            if humid < 0.5:
+            if humid < 0.6:
                 return "desert"
             else:
                 return "jungle"
