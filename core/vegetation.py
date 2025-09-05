@@ -7,7 +7,7 @@ class Vegetation:
     def __init__(self, seed=0):
         self.seed = seed
         self.tree_positions = set()  # pour mémoriser où les arbres sont déjà placés
-        self.lock = threading.Lock()  # verrou pour la concurrence
+        # self.lock = threading.Lock()  # verrou pour la concurrence
 
     def has_tree(self, x, z, biome):
         """Décide si un arbre/cactus pousse ici selon le bruit et le biome"""
@@ -32,16 +32,16 @@ class Vegetation:
 
     def can_place_tree(self, x, z, min_distance=6):
         """Vérifie si un arbre est trop proche"""
-        with self.lock:
-            for tx, tz in self.tree_positions:
-                if math.hypot(tx - x, tz - z) < min_distance:
-                    return False
+        # with self.lock:
+        for tx, tz in self.tree_positions:
+            if math.hypot(tx - x, tz - z) < min_distance:
+                return False
         return True
 
     def register_tree(self, x, z):
         """Ajoute l'arbre à la liste des positions"""
-        with self.lock:
-            self.tree_positions.add((x, z))
+        # with self.lock:
+        self.tree_positions.add((x, z))
 
     def generate(self, chunk_blocks, x, z, y, biome):
         """Génère la végétation (arbre/cactus) au-dessus du sol"""
