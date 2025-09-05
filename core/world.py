@@ -59,11 +59,11 @@ class World:
         self.cleanup_chunks(player_pos)
 
     def get_biome_label(self, player_pos):
-        biome = self.getBiome(player_pos[0], player_pos[2], seed=WORLD_SEED)
+        biome = self.getBiome(player_pos[0], player_pos[2])
         return f"Biome: {biome.capitalize()}"
         
     
-    def generate_chunk_thread(self, cx, cz, biome_octaves=4):
+    def generate_chunk_thread(self, cx, cz):
         """
         Génère un chunk avec biomes paramétrables.
         cx, cz : coordonnées du chunk
@@ -74,7 +74,7 @@ class World:
         for x in range(cx*CHUNK_SIZE, (cx+1)*CHUNK_SIZE):
             for z in range(cz*CHUNK_SIZE, (cz+1)*CHUNK_SIZE):
                 h = self.get_height(x, z)
-                biome = self.getBiome(x, z, seed=WORLD_SEED, octaves=biome_octaves)
+                biome = self.getBiome(x, z)
 
                 for y in range(-BLOCK_HEIGHT, h+1):
                     # Couches basses
@@ -176,10 +176,12 @@ class World:
         else:
             return 1 - 2 * ((1-normalized) ** 1.5)  # Étire vers 1
 
-    def getBiome(self, x, z, seed=0, biome_scale=1000.0, octaves=3):
+    def getBiome(self, x, z, biome_scale=1000.0):
         """
         Version avec transformation simple mais efficace.
         """
+        seed=WORLD_SEED
+        octaves=8
         # Génération du bruit
         temp_raw = 0.7 * noise.pnoise2(x/biome_scale, z/biome_scale, octaves=octaves, base=seed) \
                 + 0.3 * noise.pnoise2(x/(biome_scale/5), z/(biome_scale/5), octaves=5, base=seed+50)
@@ -192,20 +194,18 @@ class World:
         humid = self.normalize_to_uniform_simple(humid_raw)
         
         # Vos seuils de biomes (maintenant mieux distribués)
-        if temp < 0.4:
+        if temp < 0.25:
                 return "snow"
-        elif temp < 0.6:
+        elif temp < 0.5:
             if humid < 0.5:
                 return "taiga"
             else:
                 return "forest"
-        elif temp < 0.8:
-            if humid < 0.4:
+        elif temp < 0.75:
+            if humid < 0.5:
                 return "savanna"
-            elif humid < 0.7:
-                return "plains"
             else:
-                return "forest"
+                return "plains"
         else:
             if humid < 0.5:
                 return "desert"
