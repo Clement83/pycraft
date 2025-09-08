@@ -77,25 +77,20 @@ class World:
             for z in range(cz*CHUNK_SIZE, (cz+1)*CHUNK_SIZE):
                 h = self.get_height(x, z)
                 biome = self.getBiome(x, z)
+                block_type = biome
+                if self.vegetation.has_tree(x, z, biome):
+                    self.vegetation.generate(chunk_blocks, x, z, h+1, biome)
+                
+                # Bloc juste en dessous de la surface
+                if biome in ["desert", "savanna"]:
+                    block_type = biome
+                elif biome in ["tundra", "snow", "taiga"]:
+                    block_type = "stone"
+                else:
+                    block_type = "dirt"
+                chunk_blocks[(x, h-1, z)] = block_type
 
-                for y in range(-BLOCK_HEIGHT, h+1):
-                    # Couches basses
-                    if y <= 0:
-                        block_type = "water"
-                    elif y < h - 1:
-                        if biome in ["desert", "savanna"]:
-                            block_type = "sand"
-                        elif biome in ["tundra", "snow", "taiga"]:
-                            block_type = "stone"
-                        else:
-                            block_type = "dirt"
-                    else:
-                        # Bloc de surface : prend la texture correspondant au biome
-                        block_type = biome
-                        if self.vegetation.has_tree(x, z, biome):
-                            self.vegetation.generate(chunk_blocks, x, z, h+1, biome)
-
-                    chunk_blocks[(x, y, z)] = block_type
+                chunk_blocks[(x, h, z)] = biome
 
         self.chunk_queue.put((cx, cz, chunk_blocks))
 
