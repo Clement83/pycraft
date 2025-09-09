@@ -25,6 +25,8 @@ class World:
 
         # Start a worker thread for chunk generation
         threading.Thread(target=self.chunk_generation_worker, daemon=True).start()
+        self.sprite_generation_queue = queue.Queue() # New queue for sprite generation
+        threading.Thread(target=self.sprite_generation_worker, daemon=True).start() # New worker for sprite generation
 
     def chunk_generation_worker(self):
         while True:
@@ -64,22 +66,46 @@ class World:
             }
             self.chunk_meshing_queue.put((cx, cz))
 
-            # New: Generate sprites for this chunk if within SPRITE_RENDER_DISTANCE
-            # This check is important to avoid generating sprites for chunks that are too far
-            # even if the main world generation goes further.
-            # Accessing player position from self.program.player might be problematic in a worker thread
-            # if player object is not thread-safe or not yet initialized.
-            # For now, assuming it's safe or will be handled.
-            # A more robust solution would be to pass player_pos to chunk_generation_worker or
-            # have a separate sprite generation queue that is processed in the main thread.
+    def sprite_generation_worker(self):
+        while True:
+            cx, cz, player_chunk_x, player_chunk_z = self.sprite_generation_queue.get()
+
+            # print(f"Generating sprites for chunk ({cx}, {cz}) - Generated status: {self.sprite_chunks.get((cx, cz)).get('status') if self.sprite_chunks.get((cx, cz)) else 'not generated'}")
+
+            # If sprites for this chunk are already generated or generating, skip
+            if (cx, cz) in self.sprite_chunks and \
+               self.sprite_chunks[(cx, cz)].get('status') in ['generating', 'generated']:
+                continue
+            
+            # print self.chunks.get((cx, cz)).get('status')
+            # print(f"Starting sprite generation for chunk ({cx}, {cz})  - Base chunk status: {self.chunks.get((cx, cz)).get('status') if self.chunks.get((cx, cz)) else 'not generated'}")
+
+            # Set status to generating
+            # self.sprite_chunks[(cx, cz)] = {'status': 'generating'}
+
+            # Ensure the base chunk blocks are generated first
+            # test key blocks exist to conitnue
+            # if  self.chunks.get((cx, cz)) is None or \
+            #     self.chunks.get((cx, cz)).get('status') != 'generated':
+            #     continue
+
+            # print(f"Base chunk ({cx}, {cz}) is ready for sprite generation")
+
             if abs(cx - player_chunk_x) <= SPRITE_RENDER_DISTANCE and \
                abs(cz - player_chunk_z) <= SPRITE_RENDER_DISTANCE:
-                sprites_in_chunk = self.sprites.generate_for_chunk(cx, cz, chunk_blocks, self.getBiome)
+                sprites_in_chunk = self.sprites.generate_for_chunk(cx, cz, self.get_height, self.getBiome)
+                # print(f"Generating sprites for chunk ({cx}, {cz}) within sprite render distance and sprites_in_chunk count: {len(sprites_in_chunk)} - Current status: {self.sprite_chunks.get((cx, cz)).get('status') if self.sprite_chunks.get((cx, cz)) else 'not generated'} ")
                 if sprites_in_chunk:
-                    self.sprite_chunks[(cx, cz)] = sprites_in_chunk
+                    self.sprite_chunks[(cx, cz)]['sprites'] = sprites_in_chunk
+                    self.sprite_chunks[(cx, cz)]['status'] = 'generated'
                     self.sprite_meshing_queue.put((cx, cz))
+                    # print new status after generation
+                    #print(f"Sprite generation completed for chunk ({cx}, {cz}) - New status: {self.sprite_chunks.get((cx, cz)).get('status')}")
+                else:
+                    # If no sprites generated, mark as empty or remove
+                    self.sprite_chunks.pop((cx, cz), None) # Remove if no sprites
 
-
+            
     def update(self, player_pos):
         chunk_x = int(player_pos[0] // CHUNK_SIZE)
         chunk_z = int(player_pos[2] // CHUNK_SIZE)
@@ -92,6 +118,16 @@ class World:
                     self.chunks[(cx, cz)] = {'status': 'generating'}
                     self.chunk_generation_queue.put((cx, cz, chunk_x, chunk_z)) # Added chunk_x, chunk_z
 
+        # Enqueue new chunks for sprite generation
+        for dx in range(-SPRITE_RENDER_DISTANCE, SPRITE_RENDER_DISTANCE + 1):
+            for dz in range(-SPRITE_RENDER_DISTANCE, SPRITE_RENDER_DISTANCE + 1):
+                cx, cz = chunk_x + dx, chunk_z + dz
+                # Check if sprite chunk is not already queued, generating, or generated
+                if (cx, cz) not in self.sprite_chunks or \
+                    self.sprite_chunks[(cx, cz)].get('status') not in ['queued', 'generating', 'generated']:
+                    self.sprite_chunks[(cx, cz)] = {'status': 'queued'} # Initialize status
+                    self.sprite_generation_queue.put((cx, cz, chunk_x, chunk_z))
+
         # Process one chunk from the meshing queue per frame to avoid lag spikes
         if not self.chunk_meshing_queue.empty():
             cx, cz = self.chunk_meshing_queue.get()
@@ -102,13 +138,17 @@ class World:
                 self.create_chunk_batches(cx, cz, mesh_data)
                 chunk_data['status'] = 'rendered'
 
-        # Process one sprite chunk from the meshing queue
-        if not self.sprite_meshing_queue.empty():
-            cx, cz = self.sprite_meshing_queue.get()
-            sprite_data = self.sprite_chunks.get((cx, cz))
-            if sprite_data:
-                mesh_data = self.build_sprite_mesh(cx, cz, sprite_data)
-                self.create_sprite_batches(cx, cz, mesh_data)
+        # Process sprite chunks from the meshing queue
+        for _ in range(3): # Process up to 3 sprite chunks per frame
+            if not self.sprite_meshing_queue.empty():
+                cx, cz = self.sprite_meshing_queue.get()
+                sprite_chunk_data = self.sprite_chunks.get((cx, cz))
+                if sprite_chunk_data and sprite_chunk_data.get('status') == 'generated': # Only mesh if generated
+                    mesh_data = self.build_sprite_mesh(cx, cz, sprite_chunk_data['sprites'])
+                    self.create_sprite_batches(cx, cz, mesh_data)
+                    sprite_chunk_data['status'] = 'meshed' # New status for meshed
+            else:
+                break # No more sprite chunks to process
 
 
         self.cleanup_chunks(player_pos)
