@@ -19,7 +19,6 @@ class Sprites:
         val = (val + 1) / 2
 
         if h < -2 and val > SPRITE_NOISE_THRESHOLD + 0.2: # More likely underwater
-            print(f"Placing underwater sprite at ({x}, {h}, {z}) in biome {biome} with noise value {val}")
             return True
         elif h < 0:
             return False

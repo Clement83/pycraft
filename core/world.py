@@ -215,11 +215,20 @@ class World:
         # We will translate these to the sprite's position later in the shader or here
         # For now, let's define a simple quad that will be scaled and positioned
         # The actual billboard effect will be handled by the shader
-        sprite_quad_vertices = [
+        # First quad (original orientation)
+        sprite_quad_vertices_1 = [
             (-0.5, 0.0, 0.0), (0.5, 0.0, 0.0), (0.5, 1.0, 0.0), (-0.5, 1.0, 0.0) # Bottom-left, Bottom-right, Top-right, Top-left
         ]
+        # Second quad (rotated 90 degrees around Y-axis)
+        sprite_quad_vertices_2 = [
+            (0.0, 0.0, -0.5), (0.0, 0.0, 0.5), (0.0, 1.0, 0.5), (0.0, 1.0, -0.5) # Bottom-back, Bottom-front, Top-front, Top-back
+        ]
         sprite_tex_coords = (0, 0, 1, 0, 1, 1, 0, 1) # Standard texture coordinates for a quad
-        sprite_indices = (0, 1, 2, 0, 2, 3) # Two triangles for a quad
+
+        # Indices for the first quad
+        sprite_indices_1 = (0, 1, 2, 0, 2, 3)
+        # Indices for the second quad (offset by 4 because we add 4 vertices for the first quad)
+        sprite_indices_2 = (4, 5, 6, 4, 6, 7)
 
         for sprite in sprites_in_chunk:
             x, y, z = sprite["position"]
@@ -234,15 +243,37 @@ class World:
             
             mesh_data = vertex_data_by_texture[texture]
 
-            # Add vertices for the sprite quad, translated to its world position
-            for vert in sprite_quad_vertices:
+            # Add vertices for the first sprite quad, translated to its world position
+            for vert in sprite_quad_vertices_1:
                 mesh_data['positions'].extend((x + vert[0], y + vert[1], z + vert[2]))
             
             mesh_data['tex_coords'].extend(sprite_tex_coords)
             mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4) # White color for each vertex
 
             vc = mesh_data['count']
-            mesh_data['indices'].extend((vc, vc + 1, vc + 2, vc, vc + 2, vc + 3))
+            mesh_data['indices'].extend((vc + i for i in sprite_indices_1))
+            mesh_data['count'] += 4
+
+            # Add vertices for the second sprite quad, translated to its world position
+            for vert in sprite_quad_vertices_2:
+                mesh_data['positions'].extend((x + vert[0], y + vert[1], z + vert[2]))
+            
+            mesh_data['tex_coords'].extend(sprite_tex_coords)
+            mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4) # White color for each vertex
+
+            vc = mesh_data['count'] # Update vc for the second quad
+            mesh_data['indices'].extend((vc + i for i in sprite_indices_2))
+            mesh_data['count'] += 4
+
+            # Add vertices for the second sprite quad, translated to its world position
+            for vert in sprite_quad_vertices_2:
+                mesh_data['positions'].extend((x + vert[0], y + vert[1], z + vert[2]))
+            
+            mesh_data['tex_coords'].extend(sprite_tex_coords)
+            mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4) # White color for each vertex
+
+            vc = mesh_data['count'] # Update vc for the second quad
+            mesh_data['indices'].extend((vc + i for i in sprite_indices_2))
             mesh_data['count'] += 4
         
         return vertex_data_by_texture
