@@ -68,7 +68,7 @@ class Window(pyglet.window.Window):
         
         # Shader program (votre code existant)
         self.program = self.create_shader_program()
-        self.world = World(self.program)  # Votre monde existant
+        self.world = World(self.program)
         self.water = WaterPlane(size=2000.0)  # Votre eau existante
         
         self.keys = key.KeyStateHandler()
@@ -104,7 +104,6 @@ class Window(pyglet.window.Window):
         )
 
     def create_shader_program(self):
-        # Votre code de shader existant
         vertex_shader_source = '''
         #version 330 core
         layout (location = 0) in vec3 position;
@@ -179,10 +178,9 @@ class Window(pyglet.window.Window):
         self.program.use()
         self.program['projection'] = self.camera.projection
         self.program['view'] = self.camera.view
-        
-        # Dessiner votre monde ici
+
         self.world.draw(self.player.position)
-        
+
         self.program.stop()
         
         # Dessiner votre eau si vous l'avez
