@@ -10,7 +10,7 @@ EYE_HEIGHT = 1.6
 
 # Swimming constants
 SWIM_GRAVITY = -10.0 # Coule un peu plus vite pour être plus visible
-SWIM_SPEED_MULTIPLIER = 0.5 # Slower movement in water
+SWIM_SPEED_MULTIPLIER = 1.5 # faster movement in water
 SWIM_VERTICAL_SPEED = 5.0 # Speed for ascending/descending in water
 
 class Player:
