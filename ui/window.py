@@ -71,6 +71,33 @@ class Window(pyglet.window.Window):
         self.world = World(self.program)
         self.water = WaterPlane(size=2000.0)  # Votre eau existante
         
+        # Underwater filter initialization
+        self.underwater_program = self.create_underwater_shader_program()
+        if self.underwater_program:
+            # Create a full-screen quad for the underwater effect
+            # Vertices are in clip space [-1, 1]
+            underwater_vertices = [
+                -1.0, -1.0,
+                 1.0, -1.0,
+                 1.0,  1.0,
+                -1.0,  1.0
+            ]
+            underwater_indices = [0, 1, 2, 0, 2, 3]
+            self.underwater_vertex_list = self.underwater_program.vertex_list_indexed(
+                4, pyglet.gl.GL_TRIANGLES, underwater_indices,
+                position=('f', underwater_vertices)
+            )
+        else:
+            self.underwater_vertex_list = None
+
+        # Blit shader program for drawing FBO texture to screen when not underwater
+        self.blit_program = self.create_blit_shader_program()
+        if self.blit_program:
+            # Re-use the underwater_vertex_list as it's a simple full-screen quad
+            self.blit_vertex_list = self.underwater_vertex_list
+        else:
+            self.blit_vertex_list = None
+
         self.keys = key.KeyStateHandler()
         self.push_handlers(self.keys)
         pyglet.clock.schedule(self.update)
@@ -103,6 +130,18 @@ class Window(pyglet.window.Window):
             batch=self.ui_batch
         )
         self.total_time = 0.0 # Initialize total time
+
+        # Framebuffer Object (FBO) for post-processing
+        self.fbo = pyglet.gl.GLuint() # Create a GLuint object to store the FBO ID
+        pyglet.gl.glGenFramebuffers(1, self.fbo) # Generate 1 framebuffer and store its ID in self.fbo
+
+        self.fbo_texture = pyglet.gl.GLuint() # Create a GLuint object for the texture ID
+        pyglet.gl.glGenTextures(1, self.fbo_texture) # Generate 1 texture and store its ID
+
+        self.fbo_depth_texture = pyglet.gl.GLuint() # Create a GLuint object for the depth texture ID
+        pyglet.gl.glGenTextures(1, self.fbo_depth_texture) # Generate 1 texture and store its ID
+
+        self.create_fbo_attachments(self.width, self.height)
 
     def create_shader_program(self):
         vertex_shader_source = '''
@@ -150,9 +189,112 @@ class Window(pyglet.window.Window):
             pyglet.app.exit()
             return None
 
+    def create_underwater_shader_program(self):
+        vertex_shader_source = '''
+        #version 330 core
+        layout (location = 0) in vec2 position;
+        out vec2 uv;
+
+        void main() {
+            gl_Position = vec4(position, 0.0, 1.0);
+            uv = (position + 1.0) * 0.5; // Convert from [-1,1] to [0,1]
+        }
+        '''
+        fragment_shader_source = '''
+        #version 330 core
+        in vec2 uv;
+        out vec4 out_color;
+        uniform float time;
+        uniform vec2 resolution;
+        uniform sampler2D scene_texture; // The FBO texture
+
+        void main() {
+            vec2 distorted_uv = uv;
+            // Simple distortion based on time and UV, scaled by resolution
+            float distortion_strength = 0.01 * (1000.0 / resolution.x); // Original distortion strength
+            distorted_uv.x += sin(uv.y * 10.0 + time * 2.0) * distortion_strength;
+            distorted_uv.y += cos(uv.x * 10.0 + time * 2.0) * distortion_strength;
+
+            // Sample the scene texture with distorted UVs
+            vec4 scene_color = texture(scene_texture, distorted_uv);
+
+            // Apply a blue tint and alpha
+            vec4 underwater_color = vec4(0.0, 0.3, 0.6, 0.7);
+
+            // Make alpha pulsate slightly with time
+            float alpha_pulsation = sin(time * 3.0) * 0.05 + 0.95; // Varies between 0.9 and 1.0
+            underwater_color.a *= alpha_pulsation;
+
+            // Combine scene color with underwater tint
+            out_color = mix(scene_color, underwater_color, underwater_color.a);
+        }
+        '''
+        try:
+            vert_shader = shader.Shader(vertex_shader_source, 'vertex')
+            frag_shader = shader.Shader(fragment_shader_source, 'fragment')
+            return shader.ShaderProgram(vert_shader, frag_shader)
+        except shader.ShaderException as e:
+            print(e)
+            pyglet.app.exit()
+            return None
+
+    def create_blit_shader_program(self):
+        vertex_shader_source = '''
+        #version 330 core
+        layout (location = 0) in vec2 position;
+        out vec2 uv;
+
+        void main() {
+            gl_Position = vec4(position, 0.0, 1.0);
+            uv = (position + 1.0) * 0.5; // Convert from [-1,1] to [0,1]
+        }
+        '''
+        fragment_shader_source = '''
+        #version 330 core
+        in vec2 uv;
+        out vec4 out_color;
+        uniform sampler2D screen_texture;
+
+        void main() {
+            out_color = texture(screen_texture, uv);
+        }
+        '''
+        try:
+            vert_shader = shader.Shader(vertex_shader_source, 'vertex')
+            frag_shader = shader.Shader(fragment_shader_source, 'fragment')
+            return shader.ShaderProgram(vert_shader, frag_shader)
+        except shader.ShaderException as e:
+            print(e)
+            pyglet.app.exit()
+            return None
+
+    def create_fbo_attachments(self, width, height):
+        # Bind FBO
+        pyglet.gl.glBindFramebuffer(pyglet.gl.GL_FRAMEBUFFER, self.fbo)
+
+        # Color attachment
+        pyglet.gl.glBindTexture(pyglet.gl.GL_TEXTURE_2D, self.fbo_texture)
+        pyglet.gl.glTexImage2D(pyglet.gl.GL_TEXTURE_2D, 0, pyglet.gl.GL_RGB, width, height, 0, pyglet.gl.GL_RGB, pyglet.gl.GL_UNSIGNED_BYTE, None)
+        pyglet.gl.glTexParameteri(pyglet.gl.GL_TEXTURE_2D, pyglet.gl.GL_TEXTURE_MIN_FILTER, pyglet.gl.GL_LINEAR)
+        pyglet.gl.glTexParameteri(pyglet.gl.GL_TEXTURE_2D, pyglet.gl.GL_TEXTURE_MAG_FILTER, pyglet.gl.GL_LINEAR)
+        pyglet.gl.glFramebufferTexture2D(pyglet.gl.GL_FRAMEBUFFER, pyglet.gl.GL_COLOR_ATTACHMENT0, pyglet.gl.GL_TEXTURE_2D, self.fbo_texture, 0)
+
+        # Depth attachment
+        pyglet.gl.glBindTexture(pyglet.gl.GL_TEXTURE_2D, self.fbo_depth_texture)
+        pyglet.gl.glTexImage2D(pyglet.gl.GL_TEXTURE_2D, 0, pyglet.gl.GL_DEPTH_COMPONENT, width, height, 0, pyglet.gl.GL_DEPTH_COMPONENT, pyglet.gl.GL_FLOAT, None)
+        pyglet.gl.glFramebufferTexture2D(pyglet.gl.GL_FRAMEBUFFER, pyglet.gl.GL_DEPTH_ATTACHMENT, pyglet.gl.GL_TEXTURE_2D, self.fbo_depth_texture, 0)
+
+        # Check FBO completeness
+        if pyglet.gl.glCheckFramebufferStatus(pyglet.gl.GL_FRAMEBUFFER) != pyglet.gl.GL_FRAMEBUFFER_COMPLETE:
+            print("ERROR::FRAMEBUFFER:: Framebuffer is not complete!")
+
+        # Unbind FBO
+        pyglet.gl.glBindFramebuffer(pyglet.gl.GL_FRAMEBUFFER, 0)
+
     def on_resize(self, width, height):
         super().on_resize(width, height)
         self.camera.on_resize(width, height)
+        self.create_fbo_attachments(width, height) # Update FBO attachments on resize
 
     def on_mouse_motion(self, x, y, dx, dy):
         # Sensibilité de la souris
@@ -177,8 +319,10 @@ class Window(pyglet.window.Window):
         self.world.update(self.player.position)
 
     def on_draw(self):
-        self.clear()
-        
+        # Render to FBO
+        pyglet.gl.glBindFramebuffer(pyglet.gl.GL_FRAMEBUFFER, self.fbo)
+        self.clear() # Clear FBO
+
         # Rendu 3D
         self.program.use()
         self.program['projection'] = self.camera.projection
@@ -191,17 +335,47 @@ class Window(pyglet.window.Window):
         # Dessiner votre eau si vous l'avez
         self.water.draw(self.camera.projection, self.camera.view, self.total_time, self.player.position)
         
+        # Unbind FBO and render to screen
+        pyglet.gl.glBindFramebuffer(pyglet.gl.GL_FRAMEBUFFER, 0)
+        self.clear() # Clear screen
+
         # Appliquer le filtre sous-marin si le joueur est sous l'eau
         if self.player.is_swimming:
             self.draw_underwater_filter()
+        else:
+            # If not underwater, draw the FBO texture directly to screen using the blit shader
+            if self.blit_program and self.blit_vertex_list:
+                pyglet.gl.glDisable(pyglet.gl.GL_BLEND) # Disable blending for full screen quad
+                
+                self.blit_program.use()
+                pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
+                pyglet.gl.glBindTexture(pyglet.gl.GL_TEXTURE_2D, self.fbo_texture)
+                self.blit_program['screen_texture'] = 0 # Assign texture unit 0
+                
+                self.blit_vertex_list.draw(pyglet.gl.GL_TRIANGLES)
+                self.blit_program.stop()
 
         # UI
         self.ui_batch.draw()
 
     def draw_underwater_filter(self):
-        # Create a semi-transparent blue rectangle that covers the entire window
-        underwater_rect = pyglet.shapes.Rectangle(0, 0, self.width, self.height, color=(0, 76, 153, 128)) # RGBA (0-255)
-        underwater_rect.draw()
+        if self.underwater_program and self.underwater_vertex_list:
+            pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
+            pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
+            
+            self.underwater_program.use()
+            self.underwater_program['time'] = self.total_time
+            self.underwater_program['resolution'] = (float(self.width), float(self.height))
+            
+            # Pass the FBO texture as a uniform
+            pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
+            pyglet.gl.glBindTexture(pyglet.gl.GL_TEXTURE_2D, self.fbo_texture)
+            self.underwater_program['scene_texture'] = 0 # Assign texture unit 0
+            
+            self.underwater_vertex_list.draw(pyglet.gl.GL_TRIANGLES)
+            self.underwater_program.stop()
+            
+            pyglet.gl.glDisable(pyglet.gl.GL_BLEND)
 
     def on_key_press(self, symbol, modifiers):
         if symbol == key.ESCAPE:

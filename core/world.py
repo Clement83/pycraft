@@ -70,26 +70,10 @@ class World:
         while True:
             cx, cz, player_chunk_x, player_chunk_z = self.sprite_generation_queue.get()
 
-            # print(f"Generating sprites for chunk ({cx}, {cz}) - Generated status: {self.sprite_chunks.get((cx, cz)).get('status') if self.sprite_chunks.get((cx, cz)) else 'not generated'}")
-
             # If sprites for this chunk are already generated or generating, skip
             if (cx, cz) in self.sprite_chunks and \
                self.sprite_chunks[(cx, cz)].get('status') in ['generating', 'generated']:
                 continue
-            
-            # print self.chunks.get((cx, cz)).get('status')
-            # print(f"Starting sprite generation for chunk ({cx}, {cz})  - Base chunk status: {self.chunks.get((cx, cz)).get('status') if self.chunks.get((cx, cz)) else 'not generated'}")
-
-            # Set status to generating
-            # self.sprite_chunks[(cx, cz)] = {'status': 'generating'}
-
-            # Ensure the base chunk blocks are generated first
-            # test key blocks exist to conitnue
-            # if  self.chunks.get((cx, cz)) is None or \
-            #     self.chunks.get((cx, cz)).get('status') != 'generated':
-            #     continue
-
-            # print(f"Base chunk ({cx}, {cz}) is ready for sprite generation")
 
             if abs(cx - player_chunk_x) <= SPRITE_RENDER_DISTANCE and \
                abs(cz - player_chunk_z) <= SPRITE_RENDER_DISTANCE:
