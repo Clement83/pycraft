@@ -39,9 +39,16 @@ class Player:
         feet_block_pos = (round(self.position[0]), math.floor(self.position[1]), round(self.position[2]))
         is_in_water_block = world.blocks.get(feet_block_pos) == 'water'
 
-        # Swimming condition: player's feet are at or below water level (y=0)
-        # And the block they are in is water
-        if self.position[1] < 0:
+        was_swimming = self.is_swimming # Store previous state
+
+        # Determine if player is in water
+        # Player's feet are at y, water level is at 0. So if y <= -1, player is in water.
+        # Also check if the block at player's feet is water
+        feet_block_pos = (round(self.position[0]), math.floor(self.position[1]), round(self.position[2]))
+        is_in_water_block = world.blocks.get(feet_block_pos) == 'water'
+
+        # Swimming condition: player's eyes are at or below water level (y=0)
+        if self.position[1] + EYE_HEIGHT < 0:
             if (self.is_swimming): 
                 self.velocity_y = 0
             self.is_swimming = True
@@ -119,6 +126,13 @@ class Player:
             self._collide_and_move(dx, dy, dz, world)
 
         else: # Ground mode
+            # Check for transition from swimming to ground mode
+            if was_swimming and not self.is_swimming:
+                # If player was moving upwards (e.g., pressing space)
+                if keys[key.SPACE]: # Or check if dy was positive before collision
+                    self.velocity_y = JUMP_HEIGHT # Give them a jump boost
+                    self.on_ground = False # They are now airborne
+
             if keys[key.SPACE] and self.on_ground:
                 self.velocity_y = JUMP_HEIGHT
             

@@ -189,6 +189,10 @@ class Window(pyglet.window.Window):
         # Dessiner votre eau si vous l'avez
         self.water.draw(self.camera.projection, self.camera.view)
         
+        # Appliquer le filtre sous-marin si le joueur est sous l'eau
+        if self.player.is_swimming:
+            self.draw_underwater_filter()
+
         # UI
         self.ui_batch.draw()
 

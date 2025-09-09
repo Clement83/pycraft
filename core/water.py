@@ -54,9 +54,11 @@ class WaterPlane:
         if self.program:
             pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
             pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
+            pyglet.gl.glDisable(pyglet.gl.GL_CULL_FACE) # Disable culling for water
             self.program.use()
             self.program['projection'] = projection
             self.program['view'] = view
             self.vertex_list.draw(pyglet.gl.GL_TRIANGLES)
             self.program.stop()
+            pyglet.gl.glEnable(pyglet.gl.GL_CULL_FACE) # Re-enable culling
             pyglet.gl.glDisable(pyglet.gl.GL_BLEND)
