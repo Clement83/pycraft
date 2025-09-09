@@ -57,6 +57,10 @@ class Window(pyglet.window.Window):
         
         # OpenGL context
         pyglet.gl.glClearColor(0.5, 0.7, 1.0, 1.0)
+        self.fog_color = (0.7, 0.8, 0.9)  # Light blue/grey fog color
+        self.fog_density = 0.01 # Adjust as needed
+        self.fog_start = 60.0 # Fog starts at this distance
+        self.fog_end = 100.0 # Fog is fully opaque at this distance
         pyglet.gl.glEnable(pyglet.gl.GL_DEPTH_TEST)
         pyglet.gl.glEnable(pyglet.gl.GL_CULL_FACE)
         pyglet.gl.glFrontFace(pyglet.gl.GL_CCW)
@@ -69,7 +73,7 @@ class Window(pyglet.window.Window):
         # Shader program (votre code existant)
         self.program = self.create_shader_program()
         self.world = World(self.program)
-        self.water = WaterPlane(size=2000.0)  # Votre eau existante
+        self.water = WaterPlane(size=500.0)  # Votre eau existante
         
         # Underwater filter initialization
         self.underwater_program = self.create_underwater_shader_program()
@@ -152,6 +156,7 @@ class Window(pyglet.window.Window):
 
         out vec2 new_tex_coords;
         out vec3 new_colors;
+        out vec3 world_pos; // Added for fog calculation
 
         uniform mat4 projection;
         uniform mat4 view;
@@ -161,16 +166,23 @@ class Window(pyglet.window.Window):
             gl_Position = projection * view * vec4(position, 1.0);
             new_tex_coords = tex_coords;
             new_colors = colors;
+            world_pos = position; // Pass world position to fragment shader
         }
         '''
         fragment_shader_source = '''
         #version 330 core
         in vec2 new_tex_coords;
         in vec3 new_colors;
+        in vec3 world_pos; // Received from vertex shader
 
         out vec4 out_color;
 
         uniform sampler2D our_texture;
+        uniform vec3 fog_color;   // Fog color
+        uniform float fog_density; // Fog density (no longer used for linear fog, but kept for compatibility if needed)
+        uniform float fog_start;   // Distance where fog starts
+        uniform float fog_end;     // Distance where fog is fully opaque
+        uniform mat4 view;         // View matrix to get camera position
 
         void main()
         {
@@ -178,6 +190,15 @@ class Window(pyglet.window.Window):
             if(out_color.a < 0.1)
                 discard;
             out_color *= vec4(new_colors, 1.0);
+
+            // Fog calculation
+            vec4 view_pos = view * vec4(world_pos, 1.0);
+            float dist = length(view_pos.xyz); // Distance from camera to fragment
+
+            // Linear fog
+            float fog_factor = clamp((fog_end - dist) / (fog_end - fog_start), 0.0, 1.0);
+
+            out_color = mix(vec4(fog_color, 1.0), out_color, fog_factor);
         }
         '''
         try:
@@ -327,13 +348,17 @@ class Window(pyglet.window.Window):
         self.program.use()
         self.program['projection'] = self.camera.projection
         self.program['view'] = self.camera.view
+        self.program['fog_color'] = self.fog_color
+        self.program['fog_start'] = self.fog_start
+        self.program['fog_end'] = self.fog_end
 
         self.world.draw(self.player.position)
 
         self.program.stop()
         
         # Dessiner votre eau si vous l'avez
-        self.water.draw(self.camera.projection, self.camera.view, self.total_time, self.player.position)
+        self.water.draw(self.camera.projection, self.camera.view, self.total_time, self.player.position,
+                        self.fog_color, self.fog_start, self.fog_end)
         
         # Unbind FBO and render to screen
         pyglet.gl.glBindFramebuffer(pyglet.gl.GL_FRAMEBUFFER, 0)

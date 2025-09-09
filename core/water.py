@@ -25,6 +25,7 @@ class WaterPlane:
         uniform mat4 projection;
         uniform mat4 view;
         uniform float time; // Need to pass time to vertex shader
+        uniform vec3 camera_position; // Player's position for centering the water plane
         out vec3 position_world;
         out vec4 clip_space_position; // Position in clip space
         out vec3 eye_space_position; // Position in eye space
@@ -39,6 +40,9 @@ class WaterPlane:
             // Displace y-coordinate based on sine waves
             displaced_position.y += sin(position.x * VERTEX_WAVE_FREQUENCY + time * VERTEX_WAVE_SPEED) * VERTEX_WAVE_STRENGTH;
             displaced_position.y += cos(position.z * VERTEX_WAVE_FREQUENCY * 1.2 + time * VERTEX_WAVE_SPEED * 0.8) * (VERTEX_WAVE_STRENGTH * 0.7);
+
+            // Center the water plane on the player's XZ coordinates
+            displaced_position.xz += camera_position.xz;
 
             vec4 world_position = vec4(displaced_position, 1.0);
             eye_space_position = (view * world_position).xyz;
@@ -63,6 +67,11 @@ class WaterPlane:
         const float REFRACTIVE_INDEX_WATER = 1.33;
         const float WAVE_STRENGTH = 0.05; // How strong the waves are
         const float WAVE_SPEED = 0.5; // How fast the waves move
+
+        // Fog uniforms
+        uniform vec3 fog_color;
+        uniform float fog_start;
+        uniform float fog_end;
 
         void main() {
             // Calculate normalized device coordinates
@@ -97,6 +106,11 @@ class WaterPlane:
             animated_alpha = clamp(animated_alpha, 0.4, 0.6);
 
             out_color = vec4(final_color, animated_alpha);
+
+            // Apply fog
+            float dist = length(eye_space_position); // Distance from camera to fragment in eye space
+            float fog_factor = clamp((fog_end - dist) / (fog_end - fog_start), 0.0, 1.0);
+            out_color = mix(vec4(fog_color, 1.0), out_color, fog_factor);
         }
         '''
         try:
@@ -111,7 +125,7 @@ class WaterPlane:
         if self.program:
             self.vertex_list = self.program.vertex_list_indexed(4, pyglet.gl.GL_TRIANGLES, indices, position=('f', self.vertices))
 
-    def draw(self, projection, view, time, camera_position):
+    def draw(self, projection, view, time, camera_position, fog_color, fog_start, fog_end):
         if self.program:
             pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
             pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
@@ -121,6 +135,9 @@ class WaterPlane:
             self.program['view'] = view
             self.program['time'] = time # Pass time uniform to vertex shader
             self.program['camera_position'] = camera_position # Pass camera position uniform
+            self.program['fog_color'] = fog_color
+            self.program['fog_start'] = fog_start
+            self.program['fog_end'] = fog_end
             self.vertex_list.draw(pyglet.gl.GL_TRIANGLES)
             self.program.stop()
             pyglet.gl.glEnable(pyglet.gl.GL_CULL_FACE) # Re-enable culling

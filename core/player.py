@@ -65,6 +65,9 @@ class Player:
         movement_speed = current_speed * dt
         dx, dz, dy = 0, 0, 0
 
+        if self.ghost_mode:
+            movement_speed *= 10.0 # Ghost mode is faster
+
         if keys[key.W] or keys[key.UP]:
             dx += forward_x * movement_speed
             dz += forward_z * movement_speed
