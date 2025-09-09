@@ -1,104 +1,62 @@
-import time
-import ctypes
-from pyglet.gl import *
+import pyglet
+from pyglet.graphics import shader
+from pyglet.math import Mat4
 
 class WaterPlane:
     def __init__(self, height=0.0, size=200.0):
         self.height = height
         self.size = size
-
-        # Créer un quad simple
         s = self.size / 2
         h = self.height
+
+        # Vertex data for a quad
         self.vertices = [
-            -s, h, -s,  # coin bas-gauche
-            -s, h,  s,  # coin haut-gauche
-             s, h,  s,  # coin haut-droite
-             s, h, -s   # coin bas-droite
+            -s, h, -s,
+            -s, h,  s,
+             s, h,  s,
+             s, h, -s
         ]
+        indices = [0, 1, 2, 0, 2, 3]
 
-        # Vertex shader
-        vertex_src = """
-        #version 120
-        attribute vec3 position;
-        varying vec2 v_uv;
+        # Create a simple shader for the water
+        vertex_source = '''
+        #version 330 core
+        in vec3 position;
+        uniform mat4 projection;
+        uniform mat4 view;
+
         void main() {
-            v_uv = position.xz * 0.05;
-            gl_Position = gl_ModelViewProjectionMatrix * vec4(position, 1.0);
+            gl_Position = projection * view * vec4(position, 1.0);
         }
-        """
+        '''
 
-        # Fragment shader (scintillement)
-        fragment_src = """
-        #version 120
-        uniform float u_time;
-        varying vec2 v_uv;
+        fragment_source = '''
+        #version 330 core
+        out vec4 out_color;
+
         void main() {
-            float flicker = 0.5 + 0.5 * sin(u_time*3.0 + gl_FragCoord.x*0.05 + gl_FragCoord.y*0.05);
-            vec3 color = vec3(0.2, 0.4, 0.8) * flicker;
-            gl_FragColor = vec4(color, 0.8);
+            out_color = vec4(0.0, 0.3, 0.6, 0.5); // Semi-transparent blue
         }
-        """
+        '''
+        try:
+            vert_shader = shader.Shader(vertex_source, 'vertex')
+            frag_shader = shader.Shader(fragment_source, 'fragment')
+            self.program = shader.ShaderProgram(vert_shader, frag_shader)
+        except shader.ShaderException as e:
+            print(e)
+            # Handle shader compilation error
+            self.program = None
 
-        self.program = self.create_shader(vertex_src, fragment_src)
-        self.time_loc = glGetUniformLocation(self.program, b"u_time")
+        if self.program:
+            self.vertex_list = self.program.vertex_list_indexed(4, pyglet.gl.GL_TRIANGLES, indices, position=('f', self.vertices))
 
-    def create_shader(self, vs_source, fs_source):
-        def compile_shader(src, shader_type):
-            shader = glCreateShader(shader_type)
-            src_buffer = ctypes.create_string_buffer(src.encode('utf-8'))
-            src_ptr = ctypes.cast(ctypes.pointer(src_buffer), ctypes.POINTER(ctypes.c_char))
-            src_pp = ctypes.pointer(ctypes.cast(src_ptr, ctypes.POINTER(ctypes.c_char)))
-            length = ctypes.c_int(len(src))
-            glShaderSource(shader, 1, src_pp, ctypes.byref(length))
-            glCompileShader(shader)
-
-            status = ctypes.c_int()
-            glGetShaderiv(shader, GL_COMPILE_STATUS, ctypes.byref(status))
-            if not status.value:
-                log_length = ctypes.c_int()
-                glGetShaderiv(shader, GL_INFO_LOG_LENGTH, ctypes.byref(log_length))
-                log = ctypes.create_string_buffer(log_length.value)
-                glGetShaderInfoLog(shader, log_length, None, log)
-                raise RuntimeError("Shader compile error: " + log.value.decode(errors="ignore"))
-            return shader
-
-        vs = compile_shader(vs_source, GL_VERTEX_SHADER)
-        fs = compile_shader(fs_source, GL_FRAGMENT_SHADER)
-
-        program = glCreateProgram()
-        glAttachShader(program, vs)
-        glAttachShader(program, fs)
-        glLinkProgram(program)
-
-        status = ctypes.c_int()
-        glGetProgramiv(program, GL_LINK_STATUS, ctypes.byref(status))
-        if not status.value:
-            log_length = ctypes.c_int()
-            glGetProgramiv(program, GL_INFO_LOG_LENGTH, ctypes.byref(log_length))
-            log = ctypes.create_string_buffer(log_length.value)
-            glGetProgramInfoLog(program, log_length, None, log)
-            raise RuntimeError("Shader link error: " + log.value.decode(errors="ignore"))
-
-        return program
-
-    def draw(self):
-        glEnable(GL_BLEND)
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
-        glUseProgram(self.program)
-
-        t = time.time()
-        glUniform1f(self.time_loc, t)
-
-        glDisable(GL_CULL_FACE)  # Voir le quad des deux côtés
-
-        glBegin(GL_QUADS)
-        glVertex3f(self.vertices[0], self.vertices[1], self.vertices[2])
-        glVertex3f(self.vertices[3], self.vertices[4], self.vertices[5])
-        glVertex3f(self.vertices[6], self.vertices[7], self.vertices[8])
-        glVertex3f(self.vertices[9], self.vertices[10], self.vertices[11])
-        glEnd()
-
-        glEnable(GL_CULL_FACE)
-        glUseProgram(0)
-        glDisable(GL_BLEND)
+    def draw(self, projection, view):
+        if self.program:
+            pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
+            pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
+            self.program.use()
+            self.program['projection'] = projection
+            self.program['view'] = view
+            self.vertex_list.draw(pyglet.gl.GL_TRIANGLES)
+            self.program.stop()
+            pyglet.gl.glDisable(pyglet.gl.GL_BLEND)
