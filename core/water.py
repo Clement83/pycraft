@@ -24,16 +24,27 @@ class WaterPlane:
         in vec3 position;
         uniform mat4 projection;
         uniform mat4 view;
+        uniform float time; // Need to pass time to vertex shader
         out vec3 position_world;
         out vec4 clip_space_position; // Position in clip space
         out vec3 eye_space_position; // Position in eye space
 
+        // Constants for wave properties (can be passed as uniforms or defined here)
+        const float VERTEX_WAVE_STRENGTH = 0.1; // How much vertices are displaced vertically
+        const float VERTEX_WAVE_FREQUENCY = 0.5; // How frequent the waves are
+        const float VERTEX_WAVE_SPEED = 1.0; // How fast the waves move
+
         void main() {
-            vec4 world_position = vec4(position, 1.0);
+            vec3 displaced_position = position;
+            // Displace y-coordinate based on sine waves
+            displaced_position.y += sin(position.x * VERTEX_WAVE_FREQUENCY + time * VERTEX_WAVE_SPEED) * VERTEX_WAVE_STRENGTH;
+            displaced_position.y += cos(position.z * VERTEX_WAVE_FREQUENCY * 1.2 + time * VERTEX_WAVE_SPEED * 0.8) * (VERTEX_WAVE_STRENGTH * 0.7);
+
+            vec4 world_position = vec4(displaced_position, 1.0);
             eye_space_position = (view * world_position).xyz;
             clip_space_position = projection * view * world_position;
             gl_Position = clip_space_position;
-            position_world = position;
+            position_world = displaced_position; // Pass displaced position to fragment shader
         }
         '''
 
@@ -50,7 +61,7 @@ class WaterPlane:
         const vec3 WATER_COLOR = vec3(0.0, 0.3, 0.6); // Deep blue
         const float REFRACTIVE_INDEX_AIR = 1.0;
         const float REFRACTIVE_INDEX_WATER = 1.33;
-        const float WAVE_STRENGTH = 0.02; // How strong the waves are
+        const float WAVE_STRENGTH = 0.05; // How strong the waves are
         const float WAVE_SPEED = 0.5; // How fast the waves move
 
         void main() {
@@ -63,7 +74,9 @@ class WaterPlane:
             
             // Simple wave distortion
             float wave_offset_x = sin(position_world.x * 10.0 + time * WAVE_SPEED) * WAVE_STRENGTH;
+            wave_offset_x += cos(position_world.z * 15.0 + time * WAVE_SPEED * 1.5) * (WAVE_STRENGTH * 0.5); // Added another wave for complexity
             float wave_offset_z = cos(position_world.z * 10.0 + time * WAVE_SPEED) * WAVE_STRENGTH;
+            wave_offset_z += sin(position_world.x * 12.0 + time * WAVE_SPEED * 1.2) * (WAVE_STRENGTH * 0.4); // Added another wave for complexity
             vec3 normal = normalize(vec3(wave_offset_x, 1.0, wave_offset_z)); // Simple normal for waves
 
             // Fresnel effect
@@ -106,7 +119,7 @@ class WaterPlane:
             self.program.use()
             self.program['projection'] = projection
             self.program['view'] = view
-            self.program['time'] = time # Pass time uniform
+            self.program['time'] = time # Pass time uniform to vertex shader
             self.program['camera_position'] = camera_position # Pass camera position uniform
             self.vertex_list.draw(pyglet.gl.GL_TRIANGLES)
             self.program.stop()
