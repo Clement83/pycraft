@@ -256,3 +256,7 @@ class World:
                 return "desert"
             else:
                 return "jungle"
+
+    def is_solid(self, position):
+        """Vérifie si un bloc à une position donnée est solide."""
+        return self.blocks.get(position) is not None

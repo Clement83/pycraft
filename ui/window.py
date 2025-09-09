@@ -5,7 +5,7 @@ from pyglet.window import key
 from pyglet.math import Mat4, Vec3
 
 from core.world import World
-from core.player import Player
+from core.player import Player, EYE_HEIGHT
 from core.water import WaterPlane
 
 
@@ -24,7 +24,7 @@ class GhostCamera:
     def update(self, player):
         """Met à jour la matrice de vue basée sur la position et rotation du joueur"""
         # Position de la caméra = position du joueur
-        pos = Vec3(player.position[0], player.position[1], player.position[2])
+        pos = Vec3(player.position[0], player.position[1] + EYE_HEIGHT, player.position[2])
         
         # Calculer le point vers lequel on regarde
         pitch_rad = math.radians(player.pitch)
@@ -79,10 +79,26 @@ class Window(pyglet.window.Window):
         # UI
         self.ui_batch = pyglet.graphics.Batch()
         self.info_label = pyglet.text.Label(
-            f'Position: {self.player.position}',
+            '',
             font_name='Arial',
             font_size=12,
-            x=5, y=self.height - 20,
+            x=5, y=self.height - 5,
+            anchor_x='left', anchor_y='top',
+            batch=self.ui_batch
+        )
+        self.mode_label = pyglet.text.Label(
+            '',
+            font_name='Arial',
+            font_size=12,
+            x=5, y=self.height - 25,
+            anchor_x='left', anchor_y='top',
+            batch=self.ui_batch
+        )
+        self.debug_label = pyglet.text.Label(
+            '',
+            font_name='Arial',
+            font_size=12,
+            x=5, y=self.height - 45,
             anchor_x='left', anchor_y='top',
             batch=self.ui_batch
         )
@@ -144,12 +160,14 @@ class Window(pyglet.window.Window):
         self.player.rotate(-dy * sensitivity, dx * sensitivity)
 
     def update(self, dt):
-        self.player.update(dt, self.keys)
+        self.player.update(dt, self.keys, self.world)
         self.camera.update(self.player)
         
         # Mettre à jour l'affichage de position
         pos = self.player.position
         self.info_label.text = f'Position: ({pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f}) | Pitch: {self.player.pitch:.1f}° | Yaw: {self.player.yaw:.1f}°'
+        self.mode_label.text = f"Mode: {'Ghost' if self.player.ghost_mode else 'Grounded'}"
+        self.debug_label.text = self.player.debug_info
         
         # Mettre à jour votre monde si vous l'avez
         self.world.update(self.player.position)
@@ -181,6 +199,8 @@ class Window(pyglet.window.Window):
     def on_key_press(self, symbol, modifiers):
         if symbol == key.ESCAPE:
             pyglet.app.exit()
+        elif symbol == key.T:
+            self.player.toggle_ghost_mode()
 
     def run(self):
         pyglet.app.run()
