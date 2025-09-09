@@ -1,9 +1,10 @@
 import threading, queue, math
 import pyglet
 import noise
-from config import CHUNK_SIZE, RENDER_DISTANCE, BLOCK_HEIGHT, WORLD_SEED
 from core.textures import Textures
 from core.vegetation import Vegetation
+from core.sprites import Sprites
+from config import CHUNK_SIZE, RENDER_DISTANCE, WORLD_SEED, SPRITE_RENDER_DISTANCE # New import
 
 class World:
     def __init__(self, program):
@@ -17,13 +18,17 @@ class World:
 
         self.textures = Textures()
         self.vegetation = Vegetation(seed=WORLD_SEED)
+        self.sprites = Sprites(seed=WORLD_SEED)
+        self.sprite_chunks = {}
+        self.sprite_meshing_queue = queue.Queue()
+        self.sprite_batches = {}
 
         # Start a worker thread for chunk generation
         threading.Thread(target=self.chunk_generation_worker, daemon=True).start()
 
     def chunk_generation_worker(self):
         while True:
-            cx, cz = self.chunk_generation_queue.get()
+            cx, cz, player_chunk_x, player_chunk_z = self.chunk_generation_queue.get() # Modified
             if (cx, cz) in self.chunks and self.chunks[(cx, cz)].get('status') != 'generating':
                 continue # Already generated or queued for meshing
 
@@ -51,27 +56,41 @@ class World:
                     chunk_blocks[(x, h - 1, z)] = block_type_base
                     chunk_blocks[(x, h, z)] = block_type_top
             
-            # Update global block map (must be thread-safe if accessed elsewhere)
-            # For now, assuming this is safe as it's the main source of new blocks
             self.blocks.update(chunk_blocks)
             
             self.chunks[(cx, cz)] = {
                 'blocks': chunk_blocks,
-                'status': 'generated' # Status: generating -> generated -> meshing -> rendered
+                'status': 'generated'
             }
             self.chunk_meshing_queue.put((cx, cz))
+
+            # New: Generate sprites for this chunk if within SPRITE_RENDER_DISTANCE
+            # This check is important to avoid generating sprites for chunks that are too far
+            # even if the main world generation goes further.
+            # Accessing player position from self.program.player might be problematic in a worker thread
+            # if player object is not thread-safe or not yet initialized.
+            # For now, assuming it's safe or will be handled.
+            # A more robust solution would be to pass player_pos to chunk_generation_worker or
+            # have a separate sprite generation queue that is processed in the main thread.
+            if abs(cx - player_chunk_x) <= SPRITE_RENDER_DISTANCE and \
+               abs(cz - player_chunk_z) <= SPRITE_RENDER_DISTANCE:
+                sprites_in_chunk = self.sprites.generate_for_chunk(cx, cz, chunk_blocks, self.getBiome)
+                if sprites_in_chunk:
+                    self.sprite_chunks[(cx, cz)] = sprites_in_chunk
+                    self.sprite_meshing_queue.put((cx, cz))
+
 
     def update(self, player_pos):
         chunk_x = int(player_pos[0] // CHUNK_SIZE)
         chunk_z = int(player_pos[2] // CHUNK_SIZE)
 
-        # Enqueue new chunks to be generated
+        # Enqueue new chunks to be generated (for world blocks)
         for dx in range(-RENDER_DISTANCE, RENDER_DISTANCE + 1):
             for dz in range(-RENDER_DISTANCE, RENDER_DISTANCE + 1):
                 cx, cz = chunk_x + dx, chunk_z + dz
                 if (cx, cz) not in self.chunks:
                     self.chunks[(cx, cz)] = {'status': 'generating'}
-                    self.chunk_generation_queue.put((cx, cz))
+                    self.chunk_generation_queue.put((cx, cz, chunk_x, chunk_z)) # Added chunk_x, chunk_z
 
         # Process one chunk from the meshing queue per frame to avoid lag spikes
         if not self.chunk_meshing_queue.empty():
@@ -82,6 +101,15 @@ class World:
                 mesh_data = self.build_chunk_mesh(cx, cz)
                 self.create_chunk_batches(cx, cz, mesh_data)
                 chunk_data['status'] = 'rendered'
+
+        # Process one sprite chunk from the meshing queue
+        if not self.sprite_meshing_queue.empty():
+            cx, cz = self.sprite_meshing_queue.get()
+            sprite_data = self.sprite_chunks.get((cx, cz))
+            if sprite_data:
+                mesh_data = self.build_sprite_mesh(cx, cz, sprite_data)
+                self.create_sprite_batches(cx, cz, mesh_data)
+
 
         self.cleanup_chunks(player_pos)
 
@@ -139,6 +167,46 @@ class World:
         
         return vertex_data_by_texture
 
+    def build_sprite_mesh(self, cx, cz, sprites_in_chunk):
+        vertex_data_by_texture = {}
+
+        # Sprite is a 2D quad that always faces the camera (billboard)
+        # Vertices for a quad centered at (0,0,0) with size 1x1
+        # We will translate these to the sprite's position later in the shader or here
+        # For now, let's define a simple quad that will be scaled and positioned
+        # The actual billboard effect will be handled by the shader
+        sprite_quad_vertices = [
+            (-0.5, 0.0, 0.0), (0.5, 0.0, 0.0), (0.5, 1.0, 0.0), (-0.5, 1.0, 0.0) # Bottom-left, Bottom-right, Top-right, Top-left
+        ]
+        sprite_tex_coords = (0, 0, 1, 0, 1, 1, 0, 1) # Standard texture coordinates for a quad
+        sprite_indices = (0, 1, 2, 0, 2, 3) # Two triangles for a quad
+
+        for sprite in sprites_in_chunk:
+            x, y, z = sprite["position"]
+            sprite_type = sprite["type"]
+            
+            texture = self.textures.get(sprite_type) # Get texture for sprite type
+            if texture is None:
+                continue
+
+            if texture not in vertex_data_by_texture:
+                vertex_data_by_texture[texture] = {'positions': [], 'tex_coords': [], 'indices': [], 'colors': [], 'count': 0}
+            
+            mesh_data = vertex_data_by_texture[texture]
+
+            # Add vertices for the sprite quad, translated to its world position
+            for vert in sprite_quad_vertices:
+                mesh_data['positions'].extend((x + vert[0], y + vert[1], z + vert[2]))
+            
+            mesh_data['tex_coords'].extend(sprite_tex_coords)
+            mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4) # White color for each vertex
+
+            vc = mesh_data['count']
+            mesh_data['indices'].extend((vc, vc + 1, vc + 2, vc, vc + 2, vc + 3))
+            mesh_data['count'] += 4
+        
+        return vertex_data_by_texture
+
     def get_direction_from_face_name(self, face_name):
         if face_name == "front":
             return (0, 0, 1)
@@ -178,6 +246,27 @@ class World:
 
             self.chunk_batches[(cx, cz)][texture] = batch
 
+    def create_sprite_batches(self, cx, cz, mesh_data_by_texture):
+        self.sprite_batches[(cx, cz)] = {}
+        for texture, mesh_data in mesh_data_by_texture.items():
+            if not mesh_data['indices']:
+                continue
+
+            batch = pyglet.graphics.Batch()
+            
+            self.program.vertex_list_indexed(
+                mesh_data['count'],
+                pyglet.gl.GL_TRIANGLES,
+                mesh_data['indices'],
+                batch,
+                None,
+                position=('f', mesh_data['positions']),
+                tex_coords=('f', mesh_data['tex_coords']),
+                colors=('f', mesh_data['colors'])
+            )
+
+            self.sprite_batches[(cx, cz)][texture] = batch
+
     def get_biome_label(self, player_pos):
         biome = self.getBiome(player_pos[0], player_pos[2])
         return f"Biome: {biome.capitalize()}"
@@ -202,11 +291,14 @@ class World:
                 for pos in chunk_data['blocks']:
                     self.blocks.pop(pos, None)
             self.chunk_batches.pop(key, None)
+            self.sprite_chunks.pop(key, None)
+            self.sprite_batches.pop(key, None)
 
     def draw(self, player_pos):
         player_chunk_x = int(player_pos[0] // CHUNK_SIZE)
         player_chunk_z = int(player_pos[2] // CHUNK_SIZE)
 
+        # Draw regular chunks
         for dx in range(-RENDER_DISTANCE, RENDER_DISTANCE + 1):
             for dz in range(-RENDER_DISTANCE, RENDER_DISTANCE + 1):
                 cx, cz = player_chunk_x + dx, player_chunk_z + dz
@@ -220,6 +312,29 @@ class World:
                     pyglet.gl.glBindTexture(texture.target, texture.id)
                     self.program['our_texture'] = 0
                     batch.draw()
+
+        # New: Draw sprites
+        # Enable blending for transparency
+        pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
+        pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
+        pyglet.gl.glDisable(pyglet.gl.GL_CULL_FACE) # Disable culling for sprites
+
+        for dx in range(-SPRITE_RENDER_DISTANCE, SPRITE_RENDER_DISTANCE + 1):
+            for dz in range(-SPRITE_RENDER_DISTANCE, SPRITE_RENDER_DISTANCE + 1):
+                cx, cz = player_chunk_x + dx, player_chunk_z + dz
+                
+                if (cx, cz) not in self.sprite_batches:
+                    continue
+                
+                batches = self.sprite_batches[(cx, cz)]
+                for texture, batch in batches.items():
+                    pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
+                    pyglet.gl.glBindTexture(texture.target, texture.id)
+                    self.program['our_texture'] = 0
+                    batch.draw()
+        
+        pyglet.gl.glEnable(pyglet.gl.GL_CULL_FACE) # Re-enable culling
+        pyglet.gl.glDisable(pyglet.gl.GL_BLEND) # Disable blending after drawing sprites
 
     def normalize_to_uniform_simple(self, noise_value):
         normalized = (noise_value + 1) / 2
