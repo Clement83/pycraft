@@ -165,7 +165,10 @@ class Window(pyglet.window.Window):
         # Mettre à jour l'affichage de position
         pos = self.player.position
         self.info_label.text = f'Position: ({pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f}) | Pitch: {self.player.pitch:.1f}° | Yaw: {self.player.yaw:.1f}°'
-        self.mode_label.text = f"Mode: {'Ghost' if self.player.ghost_mode else 'Grounded'}"
+        mode_text = f"Mode: {'Ghost' if self.player.ghost_mode else 'Grounded'}"
+        if self.player.is_swimming:
+            mode_text += " (Swimming)"
+        self.mode_label.text = mode_text
         self.debug_label.text = self.player.debug_info
         
         # Mettre à jour votre monde si vous l'avez
