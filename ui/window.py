@@ -102,6 +102,7 @@ class Window(pyglet.window.Window):
             anchor_x='left', anchor_y='top',
             batch=self.ui_batch
         )
+        self.total_time = 0.0 # Initialize total time
 
     def create_shader_program(self):
         vertex_shader_source = '''
@@ -159,6 +160,7 @@ class Window(pyglet.window.Window):
         self.player.rotate(-dy * sensitivity, dx * sensitivity)
 
     def update(self, dt):
+        self.total_time += dt # Update total time
         self.player.update(dt, self.keys, self.world)
         self.camera.update(self.player)
         
@@ -187,7 +189,7 @@ class Window(pyglet.window.Window):
         self.program.stop()
         
         # Dessiner votre eau si vous l'avez
-        self.water.draw(self.camera.projection, self.camera.view)
+        self.water.draw(self.camera.projection, self.camera.view, self.total_time, self.player.position)
         
         # Appliquer le filtre sous-marin si le joueur est sous l'eau
         if self.player.is_swimming:
