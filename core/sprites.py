@@ -3,12 +3,14 @@ import random
 import math
 from config import SPRITE_NOISE_SCALE, SPRITE_NOISE_THRESHOLD, SPRITE_HEIGHT_OFFSET, CHUNK_SIZE # Import CHUNK_SIZE as well
 from core.textures import Textures
+from core.vegetation import Vegetation
 
 class Sprites:
-    def __init__(self, seed=0):
+    def __init__(self, seed=0, vegetation = None):
         self.seed = seed
         self.sprite_positions = set() # To prevent overlapping sprites
         self.textures = Textures() # Instance of the Textures class
+        self.vegetation = vegetation
 
     def hash_noise(self, x, z, seed):
         r = random.Random((x * 73856093) ^ (z * 19349663) ^ seed)
@@ -16,7 +18,10 @@ class Sprites:
         
     def has_sprite(self, x, z, h, biome):
         """Decides if a sprite should be placed here based on noise and biome."""
-        # Use configurable noise parameters
+        
+        if self.vegetation.has_tree(x, z, biome):
+            return False # No sprites where there are trees
+
         val = self.hash_noise(x, z, self.seed)
 
         if h < -2 and val > SPRITE_NOISE_THRESHOLD - 0.2: # More likely underwater

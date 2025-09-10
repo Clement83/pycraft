@@ -9,17 +9,19 @@ from core.animal.poisson import Poisson
 from core.animal.poulpe import Poulpe
 from core.animal.giraf import Giraf
 from core.animal.frog import Frog
+from core.vegetation import Vegetation
 
 # Classe manager pour tous les animaux
 class Animals:
-    def __init__(self, seed=0):
+    def __init__(self, seed=0, vegetation=None):
         self.seed = seed
         self.active_animals = []
         self.textures = None
         self.max_animals = 30
         self.spawn_radius = ANIMAL_RENDER_DISTANCE * CHUNK_SIZE / 2
         self.r = random.Random(seed)
-        
+        self.vegetation = vegetation
+
         # Mapper le nom du type d'animal (depuis le nom de fichier) à la classe
         self.animal_class_map = {
             "fish1": Poisson,
@@ -59,6 +61,10 @@ class Animals:
             z = int(player_z + dist * math.sin(angle))
             h = get_height_func(x, z)
             biome = get_biome_func(x, z)
+
+
+            if self.vegetation.has_tree(x, z, biome):
+                continue # No animals where there are trees
 
             if h < 0:
                 biome = "water"

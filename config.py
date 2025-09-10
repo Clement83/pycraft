@@ -1,6 +1,6 @@
 CHUNK_SIZE = 16
 RENDER_DISTANCE = 8
-SPRITE_RENDER_DISTANCE = 2 # New: Separate render distance for sprites
+SPRITE_RENDER_DISTANCE = 4 # New: Separate render distance for sprites
 BLOCK_HEIGHT = 20
 WORLD_SEED = 42
 

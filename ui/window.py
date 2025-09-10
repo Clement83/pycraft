@@ -3,10 +3,12 @@ import pyglet
 from pyglet.graphics import shader
 from pyglet.window import key
 from pyglet.math import Mat4, Vec3
+from pyglet import shapes
 
 from core.world import World
 from core.player import Player, EYE_HEIGHT
 from core.water import WaterPlane
+from ui.hud import HUD
 
 
 
@@ -75,6 +77,9 @@ class Window(pyglet.window.Window):
         self.world = World(self.program)
         self.water = WaterPlane(size=500.0)  # Votre eau existante
         
+        # HUD
+        self.hud = HUD()
+        
         # Underwater filter initialization
         self.underwater_program = self.create_underwater_shader_program()
         if self.underwater_program:
@@ -130,6 +135,14 @@ class Window(pyglet.window.Window):
             font_name='Arial',
             font_size=12,
             x=5, y=self.height - 45,
+            anchor_x='left', anchor_y='top',
+            batch=self.ui_batch
+        )
+        self.target_block_label = pyglet.text.Label(
+            '',
+            font_name='Arial',
+            font_size=12,
+            x=5, y=self.height - 65,
             anchor_x='left', anchor_y='top',
             batch=self.ui_batch
         )
@@ -334,7 +347,32 @@ class Window(pyglet.window.Window):
         if self.player.is_swimming:
             mode_text += " (Swimming)"
         self.mode_label.text = mode_text
-        self.debug_label.text = self.player.debug_info
+
+        # Get current biome
+        current_biome = self.world.getBiome(pos[0], pos[2])
+        self.debug_label.text = f"Debug Info: {self.player.debug_info} | Biome: {current_biome.capitalize()}"
+
+        # Raycast to find targeted block
+        player_pos = self.player.position
+        # Player's eye position (add EYE_HEIGHT)
+        eye_pos = (player_pos[0], player_pos[1] + EYE_HEIGHT, player_pos[2])
+
+        # Calculate looking direction vector
+        pitch_rad = math.radians(self.player.pitch)
+        yaw_rad = math.radians(self.player.yaw)
+
+        # Inverted yaw for correct direction
+        dx = math.sin(yaw_rad) * math.cos(pitch_rad)
+        dy = -math.sin(pitch_rad)
+        dz = -math.cos(yaw_rad) * math.cos(pitch_rad)
+        looking_vector = (dx, dy, dz)
+
+        targeted_block_coords, targeted_block_type = self._raycast(eye_pos, looking_vector)
+
+        if targeted_block_type:
+            self.target_block_label.text = f"Target Block: {targeted_block_type.capitalize()} at {targeted_block_coords}"
+        else:
+            self.target_block_label.text = "Target Block: None"
         
         # Mettre à jour votre monde si vous l'avez
         self.world.update(dt, self.player.position)
@@ -381,7 +419,16 @@ class Window(pyglet.window.Window):
                 self.blit_program.stop()
 
         # UI
+        # Ensure blending is enabled for UI elements
+        pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
+        pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
+        pyglet.gl.glDisable(pyglet.gl.GL_DEPTH_TEST) # Disable depth test for 2D UI
+
+        self.hud.draw(self.width, self.height)
         self.ui_batch.draw()
+
+        # Restore depth test for 3D rendering (if it was enabled before)
+        pyglet.gl.glEnable(pyglet.gl.GL_DEPTH_TEST)
 
     def draw_underwater_filter(self):
         if self.underwater_program and self.underwater_vertex_list:
@@ -407,6 +454,51 @@ class Window(pyglet.window.Window):
             pyglet.app.exit()
         elif symbol == key.T:
             self.player.toggle_ghost_mode()
+
+    def _raycast(self, position, vector, max_distance=10):
+        """
+        Performs a raycast from a position in a given direction to find the first block hit.
+        Returns (block_x, block_y, block_z) and block_type, or None if no block is hit within max_distance.
+        """
+        x, y, z = position
+        dx, dy, dz = vector
+
+        step_x = 1 if dx > 0 else -1
+        step_y = 1 if dy > 0 else -1
+        step_z = 1 if dz > 0 else -1
+
+        # Calculate initial t values for each axis
+        # t_max_x is the distance to the next x-plane
+        # t_delta_x is the distance to cross one unit in x
+        t_max_x = (math.floor(x) + step_x - x) / dx if dx != 0 else float('inf')
+        t_max_y = (math.floor(y) + step_y - y) / dy if dy != 0 else float('inf')
+        t_max_z = (math.floor(z) + step_z - z) / dz if dz != 0 else float('inf')
+
+        t_delta_x = abs(1 / dx) if dx != 0 else float('inf')
+        t_delta_y = abs(1 / dy) if dy != 0 else float('inf')
+        t_delta_z = abs(1 / dz) if dz != 0 else float('inf')
+
+        current_x, current_y, current_z = int(math.floor(x)), int(math.floor(y)), int(math.floor(z))
+        distance = 0.0
+
+        while distance < max_distance:
+            block_type = self.world.blocks.get((current_x, current_y, current_z))
+            if block_type is not None:
+                return (current_x, current_y, current_z), block_type
+
+            if t_max_x < t_max_y and t_max_x < t_max_z:
+                current_x += step_x
+                distance = t_max_x
+                t_max_x += t_delta_x
+            elif t_max_y < t_max_z:
+                current_y += step_y
+                distance = t_max_y
+                t_max_y += t_delta_y
+            else:
+                current_z += step_z
+                distance = t_max_z
+                t_max_z += t_delta_z
+        return None, None
 
     def run(self):
         pyglet.app.run()

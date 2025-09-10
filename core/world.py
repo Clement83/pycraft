@@ -21,14 +21,14 @@ class World:
         self.vegetation = Vegetation(seed=WORLD_SEED)
         
         # Système de sprites (basé sur les chunks)
-        self.sprites = Sprites(seed=WORLD_SEED)
+        self.sprites = Sprites(seed=WORLD_SEED, vegetation=self.vegetation)
         self.sprite_chunks = {}
         self.sprite_meshing_queue = queue.Queue()
         self.sprite_batches = {}
         self.sprite_generation_queue = queue.Queue()
 
         # Système d'animaux (basé sur des entités)
-        self.animals = Animals(seed=WORLD_SEED + 1)
+        self.animals = Animals(seed=WORLD_SEED, vegetation=self.vegetation)
         self.animals.set_textures(self.textures)
         self.animal_batches = {} # Un seul dictionnaire de batches, non lié aux chunks
 
@@ -137,7 +137,7 @@ class World:
                 self.create_sprite_batches(cx, cz, mesh_data)
                 sprite_chunk_data['status'] = 'meshed'
 
-        self.cleanup_chunks(player_pos)
+        # self.cleanup_chunks(player_pos) # Temporarily disabled for debugging
 
     def build_chunk_mesh(self, cx, cz):
         # ... (code inchangé)

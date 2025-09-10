@@ -9,24 +9,28 @@ class Vegetation:
         self.tree_positions = set()  # pour mémoriser où les arbres sont déjà placés
         # self.lock = threading.Lock()  # verrou pour la concurrence
 
+
+    def hash_noise(self, x, z, seed):
+        r = random.Random((x * 73856093) ^ (z * 19349663) ^ seed)
+        return r.random()  # entre 0 et 1
+
     def has_tree(self, x, z, biome):
         """Décide si un arbre/cactus pousse ici selon le bruit et le biome"""
-        freq = 20  # plus petit = arbres plus rapprochés
-        val = noise.pnoise2(x / freq, z / freq, octaves=2, base=self.seed)
-        val = (val + 1) / 2
+
+        val = self.hash_noise(x, z, self.seed)
 
         if biome == "forest":
-            return val > 0.5
+            return val > 0.8
         elif biome == "taiga":
-            return val > 0.55
+            return val > 0.85
         elif biome == "jungle":
-            return val > 0.40
+            return val > 0.7
         elif biome == "plains":
-            return val > 0.6
+            return val > 0.9
         elif biome == "savanna":
-            return val > 0.55
+            return val > 0.90
         elif biome == "desert":
-            return val > 0.65
+            return val > 0.95
         else:
             return False
 
@@ -76,7 +80,7 @@ class Vegetation:
                         blocks[(x+dx, y+height-1+dy, z+dz)] = "leaves"
 
     def _tree_pine(self, blocks, x, z, y):
-        height = random.randint(3, 5)
+        height = random.randint(3, 6)
         for i in range(height):
             blocks[(x, y+i, z)] = "log"
         radius = 2
@@ -88,7 +92,7 @@ class Vegetation:
             radius = max(1, radius-1)
 
     def _tree_jungle(self, blocks, x, z, y):
-        height = random.randint(4, 6)
+        height = random.randint(6, 8)
         for i in range(height):
             blocks[(x, y+i, z)] = "log"
         # feuillage un peu plus large
