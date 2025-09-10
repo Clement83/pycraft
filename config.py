@@ -6,7 +6,7 @@ WORLD_SEED = 42
 
 # Sprite generation parameters
 SPRITE_NOISE_SCALE = 0.05
-SPRITE_NOISE_THRESHOLD = 0.70
+SPRITE_NOISE_THRESHOLD = 0.80
 SPRITE_HEIGHT_OFFSET = 0.5
 
 # Animal generation parameters

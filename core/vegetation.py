@@ -1,56 +1,40 @@
-import noise
 import random
-import math
-import threading
 
 class Vegetation:
     def __init__(self, seed=0):
         self.seed = seed
-        self.tree_positions = set()  # pour mémoriser où les arbres sont déjà placés
-        # self.lock = threading.Lock()  # verrou pour la concurrence
 
+    def rand(self, x, z):
+        """Retourne un générateur pseudo-aléatoire déterministe basé sur (x, z, seed)."""
+        return random.Random((x * 73856093) ^ (z * 19349663) ^ self.seed)
 
     def hash_noise(self, x, z, seed):
+        """Retourne une valeur bruitée déterministe entre 0 et 1."""
         r = random.Random((x * 73856093) ^ (z * 19349663) ^ seed)
-        return r.random()  # entre 0 et 1
+        return r.random()
 
     def has_tree(self, x, z, biome):
-        """Décide si un arbre/cactus pousse ici selon le bruit et le biome"""
-
+        """Décide si un arbre/cactus pousse ici selon le bruit et le biome."""
         val = self.hash_noise(x, z, self.seed)
 
         if biome == "forest":
-            return val > 0.8
+            return val > 0.98
         elif biome == "taiga":
-            return val > 0.85
+            return val > 0.985
         elif biome == "jungle":
-            return val > 0.7
+            return val > 0.98
         elif biome == "plains":
-            return val > 0.9
+            return val > 0.99
         elif biome == "savanna":
-            return val > 0.90
+            return val > 0.98
         elif biome == "desert":
-            return val > 0.95
+            return val > 0.999
         else:
             return False
 
-    def can_place_tree(self, x, z, min_distance=6):
-        """Vérifie si un arbre est trop proche"""
-        # with self.lock:
-        for tx, tz in self.tree_positions:
-            if math.hypot(tx - x, tz - z) < min_distance:
-                return False
-        return True
-
-    def register_tree(self, x, z):
-        """Ajoute l'arbre à la liste des positions"""
-        # with self.lock:
-        self.tree_positions.add((x, z))
-
     def generate(self, chunk_blocks, x, z, y, biome):
-        """Génère la végétation (arbre/cactus) au-dessus du sol"""
-        if self.has_tree(x, z, biome) and self.can_place_tree(x, z):
-            self.register_tree(x, z)
+        """Génère la végétation (arbre/cactus) au-dessus du sol."""
+        if self.has_tree(x, z, biome):
 
             if biome == "forest":
                 self._tree_oak(chunk_blocks, x, z, y)
@@ -64,12 +48,14 @@ class Vegetation:
                 self._cactus(chunk_blocks, x, z, y)
             elif biome == "savanna":
                 self._tree_acacia(chunk_blocks, x, z, y)
+
     # -----------------------------
     # Types d’arbres
     # -----------------------------
 
     def _tree_oak(self, blocks, x, z, y):
-        height = random.randint(2, 4)
+        r = self.rand(x, z)
+        height = r.randint(2, 4)
         for i in range(height):
             blocks[(x, y+i, z)] = "log"
         # petite boule de feuilles
@@ -80,7 +66,8 @@ class Vegetation:
                         blocks[(x+dx, y+height-1+dy, z+dz)] = "leaves"
 
     def _tree_pine(self, blocks, x, z, y):
-        height = random.randint(3, 6)
+        r = self.rand(x, z)
+        height = r.randint(3, 6)
         for i in range(height):
             blocks[(x, y+i, z)] = "log"
         radius = 2
@@ -91,19 +78,36 @@ class Vegetation:
                         blocks[(x+dx, y+dy, z+dz)] = "leaves"
             radius = max(1, radius-1)
 
+
     def _tree_jungle(self, blocks, x, z, y):
-        height = random.randint(6, 8)
+        height = self.rand(x, z).randint(4, 6)
+        
+        # Tronc
         for i in range(height):
             blocks[(x, y+i, z)] = "log"
-        # feuillage un peu plus large
+        
+        # Feuillage principal (couche intermédiaire)
         for dx in range(-2, 3):
             for dz in range(-2, 3):
                 for dy in range(0, 2):
                     if dx**2 + dz**2 + dy**2 < 6:
-                        blocks[(x+dx, y+height-1+dy, z+dz)] = "leaves"
+                        blocks[(x+dx, y+height-2+dy, z+dz)] = "leaves"
+
+        # Couronne plus large au sommet
+        for dx in range(-3, 4):  # élargit à -3..3
+            for dz in range(-3, 4):
+                if dx**2 + dz**2 < 15:  # cercle un peu plus large
+                    blocks[(x+dx, y+height, z+dz)] = "leaves"
+
+        # Petite pointe feuillue (optionnel, pour donner une forme conique)
+        for dx in range(-1, 2):
+            for dz in range(-1, 2):
+                blocks[(x+dx, y+height+1, z+dz)] = "leaves"
+
 
     def _tree_small(self, blocks, x, z, y):
-        height = random.randint(2, 3)
+        r = self.rand(x, z)
+        height = r.randint(2, 3)
         for i in range(height):
             blocks[(x, y+i, z)] = "log"
         # petit toupet
@@ -112,12 +116,14 @@ class Vegetation:
                 blocks[(x+dx, y+height, z+dz)] = "leaves"
 
     def _cactus(self, blocks, x, z, y):
-        height = random.randint(2, 3)
+        r = self.rand(x, z)
+        height = r.randint(2, 3)
         for i in range(height):
             blocks[(x, y+i, z)] = "cactus"
 
     def _tree_acacia(self, blocks, x, z, y):
-        height = random.randint(3, 4)
+        r = self.rand(x, z)
+        height = r.randint(3, 4)
         for i in range(height):
             blocks[(x, y+i, z)] = "log"
         for dx in range(-2, 3):

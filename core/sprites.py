@@ -35,13 +35,13 @@ class Sprites:
             return True
         elif biome == "forest" and val > (SPRITE_NOISE_THRESHOLD - 0.1): # Slightly more frequent in forest
             return True
-        elif biome == "desert" and val > (SPRITE_NOISE_THRESHOLD + 0.25): # Less frequent in desert
+        elif biome == "desert" and val > (SPRITE_NOISE_THRESHOLD + 0.15): # Less frequent in desert
             return True
-        elif biome == "jungle" and val > (SPRITE_NOISE_THRESHOLD - 0.2):
+        elif biome == "jungle" and val > (SPRITE_NOISE_THRESHOLD - 0.18):
             return True
         elif biome == "savanna" and val > SPRITE_NOISE_THRESHOLD:
             return True
-        elif biome == "snow" and val > (SPRITE_NOISE_THRESHOLD + 0.15):
+        elif biome == "snow" and val > (SPRITE_NOISE_THRESHOLD + 0.18):
             return True
         elif biome == "taiga" and val > (SPRITE_NOISE_THRESHOLD + 0.08):
             return True

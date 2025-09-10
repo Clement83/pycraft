@@ -77,12 +77,14 @@ class World:
                 continue
 
             if abs(cx - player_chunk_x) <= SPRITE_RENDER_DISTANCE and abs(cz - player_chunk_z) <= SPRITE_RENDER_DISTANCE:
+                # Ensure status is set to generating to prevent duplicate queuing from main thread
+                self.sprite_chunks[(cx, cz)] = {'status': 'generating'} # Set status here
                 sprites_in_chunk = self.sprites.generate_for_chunk(cx, cz, self.get_height, self.getBiome)
                 if sprites_in_chunk:
                     self.sprite_chunks[(cx, cz)] = {'sprites': sprites_in_chunk, 'status': 'generated'}
                     self.sprite_meshing_queue.put((cx, cz))
                 else:
-                    self.sprite_chunks.pop((cx, cz), None)
+                    self.sprite_chunks.pop((cx, cz), None) # Remove if no sprites
 
     def update(self, dt, player_pos):
         chunk_x = int(player_pos[0] // CHUNK_SIZE)
@@ -137,7 +139,7 @@ class World:
                 self.create_sprite_batches(cx, cz, mesh_data)
                 sprite_chunk_data['status'] = 'meshed'
 
-        # self.cleanup_chunks(player_pos) # Temporarily disabled for debugging
+        self.cleanup_chunks(player_pos)
 
     def build_chunk_mesh(self, cx, cz):
         # ... (code inchangé)
@@ -316,7 +318,7 @@ class World:
         player_chunk_z = int(player_pos[2] // CHUNK_SIZE)
 
         for (cx, cz) in list(self.chunks.keys()):
-            if abs(cx - player_chunk_x) > RENDER_DISTANCE + 2 or abs(cz - player_chunk_z) > RENDER_DISTANCE + 2:
+            if abs(cx - player_chunk_x) > RENDER_DISTANCE or abs(cz - player_chunk_z) > RENDER_DISTANCE:
                 to_delete.append((cx, cz))
 
         for key in to_delete:
