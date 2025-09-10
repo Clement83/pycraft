@@ -337,7 +337,7 @@ class Window(pyglet.window.Window):
         self.debug_label.text = self.player.debug_info
         
         # Mettre à jour votre monde si vous l'avez
-        self.world.update(self.player.position)
+        self.world.update(dt, self.player.position)
 
     def on_draw(self):
         # Render to FBO

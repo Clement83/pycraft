@@ -20,25 +20,21 @@ class World:
         self.textures = Textures()
         self.vegetation = Vegetation(seed=WORLD_SEED)
         
-        # Système de sprites
+        # Système de sprites (basé sur les chunks)
         self.sprites = Sprites(seed=WORLD_SEED)
         self.sprite_chunks = {}
         self.sprite_meshing_queue = queue.Queue()
         self.sprite_batches = {}
         self.sprite_generation_queue = queue.Queue()
 
-        # Système d'animaux (nouveau)
-        self.animals = Animals(seed=WORLD_SEED + 1) # Utiliser une seed différente
-        self.animals.set_textures(self.textures) # Fournir les textures
-        self.animal_chunks = {}
-        self.animal_meshing_queue = queue.Queue()
-        self.animal_batches = {}
-        self.animal_generation_queue = queue.Queue()
+        # Système d'animaux (basé sur des entités)
+        self.animals = Animals(seed=WORLD_SEED + 1)
+        self.animals.set_textures(self.textures)
+        self.animal_batches = {} # Un seul dictionnaire de batches, non lié aux chunks
 
-        # Démarrer les workers
+        # Démarrer les workers pour le terrain et les sprites
         threading.Thread(target=self.chunk_generation_worker, daemon=True).start()
         threading.Thread(target=self.sprite_generation_worker, daemon=True).start()
-        threading.Thread(target=self.animal_generation_worker, daemon=True).start() # Worker pour les animaux
 
     def chunk_generation_worker(self):
         while True:
@@ -83,29 +79,12 @@ class World:
             if abs(cx - player_chunk_x) <= SPRITE_RENDER_DISTANCE and abs(cz - player_chunk_z) <= SPRITE_RENDER_DISTANCE:
                 sprites_in_chunk = self.sprites.generate_for_chunk(cx, cz, self.get_height, self.getBiome)
                 if sprites_in_chunk:
-                    self.sprite_chunks[(cx, cz)]['sprites'] = sprites_in_chunk
-                    self.sprite_chunks[(cx, cz)]['status'] = 'generated'
+                    self.sprite_chunks[(cx, cz)] = {'sprites': sprites_in_chunk, 'status': 'generated'}
                     self.sprite_meshing_queue.put((cx, cz))
                 else:
                     self.sprite_chunks.pop((cx, cz), None)
 
-    def animal_generation_worker(self):
-        """Worker pour la génération des animaux."""
-        while True:
-            cx, cz, player_chunk_x, player_chunk_z = self.animal_generation_queue.get()
-            if (cx, cz) in self.animal_chunks and self.animal_chunks[(cx, cz)].get('status') in ['generating', 'generated']:
-                continue
-
-            if abs(cx - player_chunk_x) <= SPRITE_RENDER_DISTANCE and abs(cz - player_chunk_z) <= SPRITE_RENDER_DISTANCE:
-                animals_in_chunk = self.animals.generate_for_chunk(cx, cz, self.get_height, self.getBiome)
-                if animals_in_chunk:
-                    self.animal_chunks[(cx, cz)]['animals'] = animals_in_chunk
-                    self.animal_chunks[(cx, cz)]['status'] = 'generated'
-                    self.animal_meshing_queue.put((cx, cz))
-                else:
-                    self.animal_chunks.pop((cx, cz), None)
-
-    def update(self, player_pos):
+    def update(self, dt, player_pos):
         chunk_x = int(player_pos[0] // CHUNK_SIZE)
         chunk_z = int(player_pos[2] // CHUNK_SIZE)
 
@@ -117,18 +96,27 @@ class World:
                     self.chunks[(cx, cz)] = {'status': 'generating'}
                     self.chunk_generation_queue.put((cx, cz, chunk_x, chunk_z))
 
-        # Génération des sprites et animaux
+        # Génération des sprites (par chunk)
         for dx in range(-SPRITE_RENDER_DISTANCE, SPRITE_RENDER_DISTANCE + 1):
             for dz in range(-SPRITE_RENDER_DISTANCE, SPRITE_RENDER_DISTANCE + 1):
                 cx, cz = chunk_x + dx, chunk_z + dz
-                # Sprites
                 if (cx, cz) not in self.sprite_chunks or self.sprite_chunks[(cx, cz)].get('status') not in ['queued', 'generating', 'generated']:
                     self.sprite_chunks[(cx, cz)] = {'status': 'queued'}
                     self.sprite_generation_queue.put((cx, cz, chunk_x, chunk_z))
-                # Animaux
-                if (cx, cz) not in self.animal_chunks or self.animal_chunks[(cx, cz)].get('status') not in ['queued', 'generating', 'generated']:
-                    self.animal_chunks[(cx, cz)] = {'status': 'queued'}
-                    self.animal_generation_queue.put((cx, cz, chunk_x, chunk_z))
+
+        # Mise à jour des animaux (par entité)
+        world_info_funcs = {
+            "get_height": self.get_height,
+            "get_biome": self.getBiome,
+            "is_solid": self.is_solid
+        }
+        self.animals.update(dt, player_pos, world_info_funcs)
+        animal_render_data = self.animals.get_render_data()
+        if animal_render_data:
+            mesh_data = self.build_sprite_mesh(animal_render_data, perpendicular=False)
+            self.create_animal_batches(mesh_data)
+        else:
+            self.animal_batches.clear()
 
         # Meshing du terrain
         if not self.chunk_meshing_queue.empty():
@@ -148,15 +136,6 @@ class World:
                 mesh_data = self.build_sprite_mesh(sprite_chunk_data['sprites'], perpendicular=True)
                 self.create_sprite_batches(cx, cz, mesh_data)
                 sprite_chunk_data['status'] = 'meshed'
-
-        # Meshing des animaux
-        if not self.animal_meshing_queue.empty():
-            cx, cz = self.animal_meshing_queue.get()
-            animal_chunk_data = self.animal_chunks.get((cx, cz))
-            if animal_chunk_data and animal_chunk_data.get('status') == 'generated':
-                mesh_data = self.build_sprite_mesh(animal_chunk_data['animals'], perpendicular=False)
-                self.create_animal_batches(cx, cz, mesh_data)
-                animal_chunk_data['status'] = 'meshed'
 
         self.cleanup_chunks(player_pos)
 
@@ -209,6 +188,11 @@ class World:
         sprite_tex_coords = (0, 0, 1, 0, 1, 1, 0, 1)
         sprite_indices_1 = (0, 1, 2, 0, 2, 3)
 
+        # Décalage visuel pour les animaux pour qu'ils ne flottent pas
+        y_offset = 0
+        if not perpendicular: # C'est un animal
+            y_offset = -0.5
+
         for sprite in sprites_in_chunk:
             x, y, z = sprite["position"]
             sprite_type = sprite["type"]
@@ -218,7 +202,8 @@ class World:
             mesh_data = vertex_data_by_texture[texture]
             
             vc = mesh_data['count']
-            for vert in sprite_quad_vertices_1: mesh_data['positions'].extend((x + vert[0], y + vert[1], z + vert[2]))
+            for vert in sprite_quad_vertices_1:
+                mesh_data['positions'].extend((x + vert[0], y + vert[1] + y_offset, z + vert[2]))
             mesh_data['tex_coords'].extend(sprite_tex_coords)
             mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4)
             mesh_data['indices'].extend((vc + i for i in sprite_indices_1))
@@ -226,8 +211,10 @@ class World:
 
             if perpendicular:
                 sprite_quad_vertices_2 = [(0.0, 0.0, -0.5), (0.0, 0.0, 0.5), (0.0, 1.0, 0.5), (0.0, 1.0, -0.5)]
-                sprite_indices_2 = (vc + 4, vc + 5, vc + 6, vc + 4, vc + 6, vc + 7)
-                for vert in sprite_quad_vertices_2: mesh_data['positions'].extend((x + vert[0], y + vert[1], z + vert[2]))
+                vc_perp = mesh_data['count']
+                sprite_indices_2 = (vc_perp, vc_perp + 1, vc_perp + 2, vc_perp, vc_perp + 2, vc_perp + 3)
+                for vert in sprite_quad_vertices_2:
+                     mesh_data['positions'].extend((x + vert[0], y + vert[1] + y_offset, z + vert[2]))
                 mesh_data['tex_coords'].extend(sprite_tex_coords)
                 mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4)
                 mesh_data['indices'].extend(sprite_indices_2)
@@ -261,14 +248,14 @@ class World:
             self.program.vertex_list_indexed(mesh_data['count'], pyglet.gl.GL_TRIANGLES, mesh_data['indices'], batch, None, position=('f', mesh_data['positions']), tex_coords=('f', mesh_data['tex_coords']), colors=('f', mesh_data['colors']))
             self.sprite_batches[(cx, cz)][texture] = batch
 
-    def create_animal_batches(self, cx, cz, mesh_data_by_texture):
-        """Crée les batches pour les animaux."""
-        self.animal_batches[(cx, cz)] = {}
+    def create_animal_batches(self, mesh_data_by_texture):
+        """Crée les batches pour les animaux (non lié à un chunk)."""
+        self.animal_batches.clear()
         for texture, mesh_data in mesh_data_by_texture.items():
             if not mesh_data['indices']: continue
             batch = pyglet.graphics.Batch()
             self.program.vertex_list_indexed(mesh_data['count'], pyglet.gl.GL_TRIANGLES, mesh_data['indices'], batch, None, position=('f', mesh_data['positions']), tex_coords=('f', mesh_data['tex_coords']), colors=('f', mesh_data['colors']))
-            self.animal_batches[(cx, cz)][texture] = batch
+            self.animal_batches[texture] = batch
 
     def get_biome_label(self, player_pos):
         # ... (code inchangé)
@@ -286,7 +273,7 @@ class World:
         player_chunk_x = int(player_pos[0] // CHUNK_SIZE)
         player_chunk_z = int(player_pos[2] // CHUNK_SIZE)
 
-        for (cx, cz) in self.chunks:
+        for (cx, cz) in list(self.chunks.keys()):
             if abs(cx - player_chunk_x) > RENDER_DISTANCE + 2 or abs(cz - player_chunk_z) > RENDER_DISTANCE + 2:
                 to_delete.append((cx, cz))
 
@@ -295,8 +282,6 @@ class World:
             self.chunk_batches.pop(key, None)
             self.sprite_chunks.pop(key, None)
             self.sprite_batches.pop(key, None)
-            self.animal_chunks.pop(key, None) # Nettoyer les animaux
-            self.animal_batches.pop(key, None) # Nettoyer les animaux
 
     def draw(self, player_pos):
         player_chunk_x = int(player_pos[0] // CHUNK_SIZE)
@@ -318,24 +303,24 @@ class World:
         pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
         pyglet.gl.glDisable(pyglet.gl.GL_CULL_FACE)
 
+        # Dessin des sprites (par chunk)
         for dx in range(-SPRITE_RENDER_DISTANCE, SPRITE_RENDER_DISTANCE + 1):
             for dz in range(-SPRITE_RENDER_DISTANCE, SPRITE_RENDER_DISTANCE + 1):
                 cx, cz = player_chunk_x + dx, player_chunk_z + dz
-                # Sprites
                 if (cx, cz) in self.sprite_batches:
                     for texture, batch in self.sprite_batches[(cx, cz)].items():
                         pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
                         pyglet.gl.glBindTexture(texture.target, texture.id)
                         self.program['our_texture'] = 0
                         batch.draw()
-                # Animaux
-                if (cx, cz) in self.animal_batches:
-                    for texture, batch in self.animal_batches[(cx, cz)].items():
-                        pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
-                        pyglet.gl.glBindTexture(texture.target, texture.id)
-                        self.program['our_texture'] = 0
-                        batch.draw()
         
+        # Dessin des animaux (batch unique)
+        for texture, batch in self.animal_batches.items():
+            pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
+            pyglet.gl.glBindTexture(texture.target, texture.id)
+            self.program['our_texture'] = 0
+            batch.draw()
+
         pyglet.gl.glEnable(pyglet.gl.GL_CULL_FACE)
         pyglet.gl.glDisable(pyglet.gl.GL_BLEND)
 

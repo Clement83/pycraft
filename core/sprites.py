@@ -21,6 +21,8 @@ class Sprites:
 
         if h < -2 and val > SPRITE_NOISE_THRESHOLD - 0.2: # More likely underwater
             return True
+        if h == -1 and val > SPRITE_NOISE_THRESHOLD:
+            return True
         elif h < 0:
             return False
         # Example: place sprites more often in plains and forest
@@ -79,6 +81,9 @@ class Sprites:
         # Cas spécial : sous l'eau -> forcer biome = water
         if ground_y < 0:
             biome = "water"
+        
+        if ground_y == -1:
+            biome = "plage"
 
         textures_for_biome = biome_map.get(biome, [])
         if not textures_for_biome:

@@ -1,88 +1,86 @@
 import random
-from config import CHUNK_SIZE
-from config import ANIMAL_NOISE_SCALE, ANIMAL_NOISE_THRESHOLD, ANIMAL_HEIGHT_OFFSET, SPRITE_HEIGHT_OFFSET, CHUNK_SIZE # Import CHUNK_SIZE as well
+import math
+import os
+from config import ANIMAL_RENDER_DISTANCE, CHUNK_SIZE, ANIMAL_HEIGHT_OFFSET
 
+# Import des classes d'animaux
+from core.animal.base import BaseAnimal
+from core.animal.poisson import Poisson
+from core.animal.poulpe import Poulpe
+
+# Classe manager pour tous les animaux
 class Animals:
     def __init__(self, seed=0):
         self.seed = seed
-        self.animal_positions = set()
-        self.textures = None  # Sera défini depuis World
+        self.active_animals = []
+        self.textures = None
+        self.max_animals = 30
+        self.spawn_radius = ANIMAL_RENDER_DISTANCE * CHUNK_SIZE / 2
+        self.r = random.Random(seed)
+        
+        # Mapper le nom du type d'animal (depuis le nom de fichier) à la classe
+        self.animal_class_map = {
+            "fish1": Poisson,
+            "poulpe": Poulpe
+        }
 
     def set_textures(self, textures):
         self.textures = textures
 
-    def hash_noise(self, x, z, seed):
-        r = random.Random((x * 83756093) ^ (z * 29349663) ^ seed)
-        return r.random()
+    def update(self, dt, player_pos, world_info_funcs):
+        """Méthode principale appelée à chaque frame."""
+        self._manage_population(player_pos, world_info_funcs.get("get_height"), world_info_funcs.get("get_biome"))
 
-    def has_animal(self, x, z, h, biome):
-        """Décide si un animal doit apparaître ici."""
-        # Les animaux sont plus rares que les sprites d'herbe
-        val = self.hash_noise(x, z, self.seed)
+        # Le dictionnaire est déjà prêt à être passé aux animaux
+        for animal in self.active_animals:
+            animal.update(dt, player_pos, world_info_funcs)
 
-        if h < -2 and val > ANIMAL_NOISE_THRESHOLD - 0.02: # More likely underwater
-            return True
-        elif h < 0:
-            return False
-        # Example: place sprites more often in plains and forest
-        elif biome == "plains" and val > ANIMAL_NOISE_THRESHOLD:
-            return True
-        elif biome == "forest" and val > (ANIMAL_NOISE_THRESHOLD - 0.1): # Slightly more frequent in forest
-            return True
-        elif biome == "desert" and val > (ANIMAL_NOISE_THRESHOLD + 0.04): # Less frequent in desert
-            return True
-        elif biome == "jungle" and val > (ANIMAL_NOISE_THRESHOLD - 0.2):
-            return True
-        elif biome == "savanna" and val > ANIMAL_NOISE_THRESHOLD:
-            return True
-        elif biome == "snow" and val > (ANIMAL_NOISE_THRESHOLD + 0.03):
-            return True
-        elif biome == "taiga" and val > (ANIMAL_NOISE_THRESHOLD + 0.01):
-            return True
-        else:
-            return False
+        player_x, _, player_z = player_pos
+        max_dist = self.spawn_radius * 1.5
+        self.active_animals = [
+            animal for animal in self.active_animals 
+            if math.hypot(animal.x - player_x, animal.z - player_z) < max_dist
+        ]
 
-    def register_animal(self, x, z):
-        self.animal_positions.add((x, z))
+    def _manage_population(self, player_pos, get_height_func, get_biome_func):
+        if len(self.active_animals) < self.max_animals:
+            self._spawn_animal(player_pos, get_height_func, get_biome_func)
 
-    def generate_for_chunk(self, chunk_x, chunk_z, get_height_func, get_biome_func):
-        """Génère les données des animaux pour un chunk."""
-        animals_in_chunk = []
-        for x in range(chunk_x * CHUNK_SIZE, (chunk_x + 1) * CHUNK_SIZE):
-            for z in range(chunk_z * CHUNK_SIZE, (chunk_z + 1) * CHUNK_SIZE):
-                biome = get_biome_func(x, z)
-                ground_y = get_height_func(x, z)
+    def _spawn_animal(self, player_pos, get_height_func, get_biome_func):
+        player_x, _, player_z = player_pos
+        for _ in range(10):
+            angle = self.r.uniform(0, 2 * math.pi)
+            dist = self.r.uniform(self.spawn_radius / 2, self.spawn_radius)
+            x = int(player_x + dist * math.cos(angle))
+            z = int(player_z + dist * math.sin(angle))
+            h = get_height_func(x, z)
+            biome = get_biome_func(x, z)
 
-                if self.has_animal(x, z, ground_y, biome):
-                    animal_type = self.get_animal_type_for_biome(biome, ground_y, x, z)
-                    if animal_type:
-                        animals_in_chunk.append({
-                            "position": (x, ground_y + ANIMAL_HEIGHT_OFFSET, z), # Un peu au-dessus du sol
-                            "type": animal_type,
-                            "biome": biome
-                        })
-                        self.register_animal(x, z)
-        return animals_in_chunk
+            if h < 0:
+                biome = "water"
 
-    def get_animal_type_for_biome(self, biome, ground_y, x=None, z=None):
-        """Retourne un type d'animal pour un biome donné."""
+            animal_texture_path = self.get_animal_type_for_biome(biome)
+            if animal_texture_path:
+                # Extraire le nom de base de la texture pour trouver la classe
+                type_name = os.path.splitext(os.path.basename(animal_texture_path))[0]
+                # Utiliser BaseAnimal comme fallback si le type n'est pas dans la map
+                AnimalClass = self.animal_class_map.get(type_name, BaseAnimal)
+
+                new_animal = AnimalClass(x, h + 1, z, animal_texture_path)
+                self.active_animals.append(new_animal)
+                return
+
+    def get_animal_type_for_biome(self, biome):
         if not self.textures:
             return None
-
-        # Utilise une nouvelle méthode de textures pour les animaux
         animal_map = self.textures.get_animal_biome_textures()
-
-        if ground_y < 0:
-            biome = "water"
-
         animals_for_biome = animal_map.get(biome, [])
         if not animals_for_biome:
             return None
+        return self.r.choice(animals_for_biome)
 
-        # Sélection déterministe
-        if x is not None and z is not None:
-            val = self.hash_noise(x, z, self.seed + 200)
-            idx = int(val * len(animals_for_biome))
-            return animals_for_biome[idx]
-        else:
-            return random.choice(animals_for_biome)
+    def get_render_data(self):
+        return [
+            {"position": (animal.x, animal.y, animal.z), "type": animal.type}
+            for animal in self.active_animals
+        ]
