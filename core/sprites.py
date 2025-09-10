@@ -19,7 +19,7 @@ class Sprites:
         # Use configurable noise parameters
         val = self.hash_noise(x, z, self.seed)
 
-        if h < -2 and val > SPRITE_NOISE_THRESHOLD + 0.2: # More likely underwater
+        if h < -2 and val > SPRITE_NOISE_THRESHOLD - 0.2: # More likely underwater
             return True
         elif h < 0:
             return False
@@ -30,13 +30,13 @@ class Sprites:
             return True
         elif biome == "desert" and val > (SPRITE_NOISE_THRESHOLD + 0.25): # Less frequent in desert
             return True
-        elif biome == "jungle" and val > (SPRITE_NOISE_THRESHOLD - 0.05):
+        elif biome == "jungle" and val > (SPRITE_NOISE_THRESHOLD - 0.2):
             return True
         elif biome == "savanna" and val > SPRITE_NOISE_THRESHOLD:
             return True
-        elif biome == "snow" and val > (SPRITE_NOISE_THRESHOLD + 0.1):
+        elif biome == "snow" and val > (SPRITE_NOISE_THRESHOLD + 0.15):
             return True
-        elif biome == "taiga" and val > (SPRITE_NOISE_THRESHOLD + 0.05):
+        elif biome == "taiga" and val > (SPRITE_NOISE_THRESHOLD + 0.08):
             return True
         else:
             return False
