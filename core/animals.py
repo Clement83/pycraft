@@ -7,6 +7,8 @@ from config import ANIMAL_RENDER_DISTANCE, CHUNK_SIZE, ANIMAL_HEIGHT_OFFSET
 from core.animal.base import BaseAnimal
 from core.animal.poisson import Poisson
 from core.animal.poulpe import Poulpe
+from core.animal.giraf import Giraf
+from core.animal.frog import Frog
 
 # Classe manager pour tous les animaux
 class Animals:
@@ -21,7 +23,9 @@ class Animals:
         # Mapper le nom du type d'animal (depuis le nom de fichier) à la classe
         self.animal_class_map = {
             "fish1": Poisson,
-            "poulpe": Poulpe
+            "poulpe": Poulpe,
+            "giraf1": Giraf,
+            "frog": Frog
         }
 
     def set_textures(self, textures):
@@ -81,6 +85,6 @@ class Animals:
 
     def get_render_data(self):
         return [
-            {"position": (animal.x, animal.y, animal.z), "type": animal.type, "velocity": animal.velocity}
+            {"position": (animal.x, animal.y, animal.z), "type": animal.type, "velocity": animal.velocity, "width": animal.width, "height": animal.height}
             for animal in self.active_animals
         ]

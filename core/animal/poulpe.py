@@ -3,7 +3,7 @@ import random
 
 class Poulpe(BaseAnimal):
     def __init__(self, x, y, z, animal_type):
-        super().__init__(x, y, z, animal_type)
+        super().__init__(x, y, z, animal_type, width=1.0, height=1.0)
         self.base_speed = 0.6 # Plus lent que le poisson
         self.gravity_multiplier = 0.3 # Flotte un peu moins que le poisson
 

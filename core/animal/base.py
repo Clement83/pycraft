@@ -2,14 +2,14 @@ import math
 import random
 
 class BaseAnimal:
-    def __init__(self, x, y, z, animal_type):
+    def __init__(self, x, y, z, animal_type, width=1, height=1):
         self.x = x
         self.y = y
         self.z = z
         self.type = animal_type
         
-        self.width = 0.5
-        self.height = 0.5
+        self.width = width
+        self.height = height
 
         # Système de vélocité
         self.base_speed = 0.5 # Vitesse de base pour le calcul de la vélocité

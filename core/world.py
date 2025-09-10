@@ -184,7 +184,6 @@ class World:
 
     def build_sprite_mesh(self, sprites_in_chunk, perpendicular=True):
         vertex_data_by_texture = {}
-        sprite_quad_vertices = [(-0.5, 0.0, 0.0), (0.5, 0.0, 0.0), (0.5, 1.0, 0.0), (-0.5, 1.0, 0.0)]
         sprite_tex_coords = (0, 0, 1, 0, 1, 1, 0, 1)
         sprite_indices = (0, 1, 2, 0, 2, 3)
 
@@ -195,6 +194,16 @@ class World:
         for sprite_data in sprites_in_chunk:
             x, y, z = sprite_data["position"]
             sprite_type = sprite_data["type"]
+            
+            # Get width and height, with default values
+            # For animals, use their specific width/height. For vegetation, use default 1.0.
+            width = sprite_data.get("width", 1.0) if not perpendicular else 1.0
+            height = sprite_data.get("height", 1.0) if not perpendicular else 1.0
+
+            # Create vertices based on width and height
+            half_width = width / 2
+            sprite_quad_vertices = [(-half_width, 0.0, 0.0), (half_width, 0.0, 0.0), (half_width, height, 0.0), (-half_width, height, 0.0)]
+
             texture = self.textures.get(sprite_type)
             if texture is None: continue
             if texture not in vertex_data_by_texture: vertex_data_by_texture[texture] = {'positions': [], 'tex_coords': [], 'indices': [], 'colors': [], 'count': 0}
@@ -242,7 +251,9 @@ class World:
                 mesh_data['count'] += 4
 
                 # Deuxième quad perpendiculaire
-                sprite_quad_vertices_2 = [(0.0, 0.0, -0.5), (0.0, 0.0, 0.5), (0.0, 1.0, 0.5), (0.0, 1.0, -0.5)]
+                # The vertices for the second quad should also respect the width and height
+                # For vegetation, width and height are 1.0, so half_width is 0.5
+                sprite_quad_vertices_2 = [(0.0, 0.0, -half_width), (0.0, 0.0, half_width), (0.0, height, half_width), (0.0, height, -half_width)]
                 vc_perp = mesh_data['count']
                 sprite_indices_2 = (vc_perp, vc_perp + 1, vc_perp + 2, vc_perp, vc_perp + 2, vc_perp + 3)
                 for vert in sprite_quad_vertices_2: mesh_data['positions'].extend((x + vert[0], y + vert[1] + y_offset, z + vert[2]))
