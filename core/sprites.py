@@ -2,21 +2,22 @@ import noise
 import random
 import math
 from config import SPRITE_NOISE_SCALE, SPRITE_NOISE_THRESHOLD, SPRITE_HEIGHT_OFFSET, CHUNK_SIZE # Import CHUNK_SIZE as well
+from core.textures import Textures
 
 class Sprites:
     def __init__(self, seed=0):
         self.seed = seed
         self.sprite_positions = set() # To prevent overlapping sprites
+        self.textures = Textures() # Instance of the Textures class
 
     def hash_noise(self, x, z, seed):
         r = random.Random((x * 73856093) ^ (z * 19349663) ^ seed)
-        return r.random() * 2 - 1  # entre -1 et 1
+        return r.random()  # entre 0 et 1
         
     def has_sprite(self, x, z, h, biome):
         """Decides if a sprite should be placed here based on noise and biome."""
         # Use configurable noise parameters
         val = self.hash_noise(x, z, self.seed)
-        val = (val + 1) / 2
 
         if h < -2 and val > SPRITE_NOISE_THRESHOLD + 0.2: # More likely underwater
             return True
@@ -40,13 +41,6 @@ class Sprites:
         else:
             return False
 
-    def can_place_sprite(self, x, z, min_distance=3):
-        """Checks if a sprite is too close to another sprite."""
-        # for sx, sz in self.sprite_positions:
-        #     if math.hypot(sx - x, sz - z) < min_distance:
-        #         return False
-        return True
-
     def register_sprite(self, x, z):
         """Adds the sprite to the list of positions."""
         self.sprite_positions.add((x, z))
@@ -59,9 +53,9 @@ class Sprites:
                 biome = get_biome_func(x, z)
                 # Find the ground level
                 ground_y = get_height_func(x, z)
-                if self.has_sprite(x, z, ground_y, biome) and self.can_place_sprite(x, z):
-                    
-                    sprite_type = self.get_sprite_type_for_biome(biome, ground_y)
+                if self.has_sprite(x, z, ground_y, biome):
+
+                    sprite_type = self.get_sprite_type_for_biome(biome, ground_y, x, z)
                     if sprite_type:
                         sprites_in_chunk.append({
                             "position": (x, ground_y + SPRITE_HEIGHT_OFFSET, z), # Use configurable height offset
@@ -71,26 +65,31 @@ class Sprites:
                         self.register_sprite(x, z)
         return sprites_in_chunk
 
-    def get_sprite_type_for_biome(self, biome, ground_y):
-        """Returns the sprite type for a given biome."""
-        # This will be expanded to map biomes to specific sprite image files
-        # For now, using placeholder names that correspond to the assets/sprites structure
-
-        if ground_y < 0:
-            return "water/algae"
-        elif biome == "plains":
-            return "plains/grass" 
-        elif biome == "forest":
-            return "forest/grass" 
-        elif biome == "desert":
-            return "desert/desert" # Assuming a cactus sprite for desert
-        elif biome == "jungle":
-            return "jungle/grass"
-        elif biome == "savanna":
-            return "savanna/savanna" # Using the exact filename from the folder structure
-        elif biome == "snow":
-            return "snow/glassed_grass" 
-        elif biome == "taiga":
-            return "taiga/glassed_grass"
-        else:
+    def get_sprite_type_for_biome(self, biome, ground_y, x=None, z=None):
+        """
+        Retourne une texture pour un biome donné en utilisant le bruit (sélection déterministe).
+        Cas spécial : si ground_y < 0 → biome = "water".
+        """
+        if not self.textures:
+            print(f"[Sprites] Aucun gestionnaire de textures fourni pour biome={biome}")
             return None
+
+        biome_map = self.textures.get_biome_textures()
+
+        # Cas spécial : sous l'eau -> forcer biome = water
+        if ground_y < 0:
+            biome = "water"
+
+        textures_for_biome = biome_map.get(biome, [])
+        if not textures_for_biome:
+            return None  # aucun sprite dispo pour ce biome
+
+        # Sélection déterministe via bruit
+        if x is not None and z is not None:
+            val = self.hash_noise(x, z, self.seed + 100) 
+            idx = int(val * len(textures_for_biome)) % len(textures_for_biome)
+            chosen = textures_for_biome[idx]
+        else:
+            # fallback si pas de coordonnées (rare)
+            chosen = random.choice(textures_for_biome)
+        return chosen

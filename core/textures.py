@@ -55,6 +55,18 @@ class Textures:
         # Finally, check general textures
         return self.textures.get(texture_name)
 
-    # The get_sprite_texture method is now redundant as 'get' handles both
-    # def get_sprite_texture(self, biome_name):
-    #     return self.sprite_textures.get(biome_name)
+    def get_biome_textures(self):
+        """
+        Retourne un dictionnaire { biome: [chemins des textures de sprites disponibles] }
+        Exemple : { "jungle": ["jungle/jungle1", "jungle/jungle2", "jungle/grass"] }
+        """
+        biome_map = {}
+
+        # Garder uniquement les sprites (ceux dans les dossiers)
+        for key in self.sprite_textures.keys():
+            biome_dir, sprite_name = key.split("/", 1)
+            if biome_dir not in biome_map:
+                biome_map[biome_dir] = []
+            biome_map[biome_dir].append(key)
+
+        return biome_map
