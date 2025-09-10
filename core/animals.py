@@ -81,6 +81,6 @@ class Animals:
 
     def get_render_data(self):
         return [
-            {"position": (animal.x, animal.y, animal.z), "type": animal.type}
+            {"position": (animal.x, animal.y, animal.z), "type": animal.type, "velocity": animal.velocity}
             for animal in self.active_animals
         ]

@@ -184,37 +184,68 @@ class World:
 
     def build_sprite_mesh(self, sprites_in_chunk, perpendicular=True):
         vertex_data_by_texture = {}
-        sprite_quad_vertices_1 = [(-0.5, 0.0, 0.0), (0.5, 0.0, 0.0), (0.5, 1.0, 0.0), (-0.5, 1.0, 0.0)]
+        sprite_quad_vertices = [(-0.5, 0.0, 0.0), (0.5, 0.0, 0.0), (0.5, 1.0, 0.0), (-0.5, 1.0, 0.0)]
         sprite_tex_coords = (0, 0, 1, 0, 1, 1, 0, 1)
-        sprite_indices_1 = (0, 1, 2, 0, 2, 3)
+        sprite_indices = (0, 1, 2, 0, 2, 3)
 
-        # Décalage visuel pour les animaux pour qu'ils ne flottent pas
         y_offset = 0
         if not perpendicular: # C'est un animal
             y_offset = -0.5
 
-        for sprite in sprites_in_chunk:
-            x, y, z = sprite["position"]
-            sprite_type = sprite["type"]
+        for sprite_data in sprites_in_chunk:
+            x, y, z = sprite_data["position"]
+            sprite_type = sprite_data["type"]
             texture = self.textures.get(sprite_type)
             if texture is None: continue
             if texture not in vertex_data_by_texture: vertex_data_by_texture[texture] = {'positions': [], 'tex_coords': [], 'indices': [], 'colors': [], 'count': 0}
             mesh_data = vertex_data_by_texture[texture]
             
             vc = mesh_data['count']
-            for vert in sprite_quad_vertices_1:
-                mesh_data['positions'].extend((x + vert[0], y + vert[1] + y_offset, z + vert[2]))
-            mesh_data['tex_coords'].extend(sprite_tex_coords)
-            mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4)
-            mesh_data['indices'].extend((vc + i for i in sprite_indices_1))
-            mesh_data['count'] += 4
 
-            if perpendicular:
+            # Logique pour les animaux (plan unique orienté)
+            if not perpendicular:
+                velocity = sprite_data.get("velocity", [0, 0, 0])
+                vx, _, vz = velocity
+                
+                # Calculer l'angle de rotation sur l'axe Y
+                if abs(vx) > 0.01 or abs(vz) > 0.01:
+                    angle = math.atan2(vx, vz)
+                else:
+                    angle = 0 # Pas de mouvement, pas de rotation
+
+                cos_a = math.cos(angle)
+                sin_a = math.sin(angle)
+
+                rotated_vertices = []
+                for v_x, v_y, v_z in sprite_quad_vertices:
+                    # Rotation 2D sur le plan XZ
+                    rotated_x = v_x * cos_a
+                    rotated_z = v_x * sin_a
+                    # Ajouter la position du monde
+                    rotated_vertices.append((x + rotated_x, y + v_y + y_offset, z + rotated_z))
+
+                for vert in rotated_vertices:
+                    mesh_data['positions'].extend(vert)
+                
+                mesh_data['tex_coords'].extend(sprite_tex_coords)
+                mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4)
+                mesh_data['indices'].extend((vc + i for i in sprite_indices))
+                mesh_data['count'] += 4
+
+            # Logique pour la végétation (croix 3D)
+            else:
+                # Premier quad
+                for vert in sprite_quad_vertices: mesh_data['positions'].extend((x + vert[0], y + vert[1] + y_offset, z + vert[2]))
+                mesh_data['tex_coords'].extend(sprite_tex_coords)
+                mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4)
+                mesh_data['indices'].extend((vc + i for i in sprite_indices))
+                mesh_data['count'] += 4
+
+                # Deuxième quad perpendiculaire
                 sprite_quad_vertices_2 = [(0.0, 0.0, -0.5), (0.0, 0.0, 0.5), (0.0, 1.0, 0.5), (0.0, 1.0, -0.5)]
                 vc_perp = mesh_data['count']
                 sprite_indices_2 = (vc_perp, vc_perp + 1, vc_perp + 2, vc_perp, vc_perp + 2, vc_perp + 3)
-                for vert in sprite_quad_vertices_2:
-                     mesh_data['positions'].extend((x + vert[0], y + vert[1] + y_offset, z + vert[2]))
+                for vert in sprite_quad_vertices_2: mesh_data['positions'].extend((x + vert[0], y + vert[1] + y_offset, z + vert[2]))
                 mesh_data['tex_coords'].extend(sprite_tex_coords)
                 mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4)
                 mesh_data['indices'].extend(sprite_indices_2)

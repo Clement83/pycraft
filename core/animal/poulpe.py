@@ -5,7 +5,7 @@ class Poulpe(BaseAnimal):
     def __init__(self, x, y, z, animal_type):
         super().__init__(x, y, z, animal_type)
         self.base_speed = 0.6 # Plus lent que le poisson
-        self.gravity_multiplier = 0.1 # Flotte un peu moins que le poisson
+        self.gravity_multiplier = 0.3 # Flotte un peu moins que le poisson
 
     def _choose_new_random_direction(self, world_info):
         """Le poulpe se déplace lentement, avec des sauts occasionnels."""
@@ -22,9 +22,6 @@ class Poulpe(BaseAnimal):
     def update(self, dt, player_pos, world_info):
         # Appeler la logique de base
         super().update(dt, player_pos, world_info)
-
-        # Tendance à couler vers le fond
-        self.velocity[1] -= 0.5 * dt
 
         # Contrainte : rester dans l'eau
         if self.y > -0.5:
