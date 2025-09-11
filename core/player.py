@@ -146,43 +146,42 @@ class Player:
 
     def _collide_and_move(self, dx, dy, dz, world):
         x, y, z = self.position
+        w = PLAYER_WIDTH / 2
+        h = PLAYER_HEIGHT
 
-        # X-axis
-        nx = x + dx
-        if not self._is_colliding(nx, y, z, world):
-            x = nx
-
-        # Z-axis
-        nz = z + dz
-        if not self._is_colliding(x, y, nz, world):
-            z = nz
-
-        # Y-axis
-        ny = y + dy
-        if not self._is_colliding(x, ny, z, world):
-            y = ny
-            # En mode natation, on ne se pose pas au sol
+        # Axe Y
+        y += dy
+        if self._is_colliding(x, y, z, world):
+            if dy < 0:  # Tombe sur un bloc
+                self.on_ground = True
+                self.velocity_y = 0
+                y = math.floor(y) + 1.0
+            elif dy > 0:  # Heurte un plafond
+                self.velocity_y = 0
+                y = math.floor(y + h) - h - 0.001
+        else:
             if not self.is_swimming:
                 self.on_ground = False
-        else:
-            # Gestion des collisions différente selon le mode
-            if not self.is_swimming:
-                # Mode ground : comportement normal
-                if dy < 0:
-                    self.on_ground = True
-                    self.velocity_y = 0
-                    y = math.floor(ny) + 1
-                elif dy > 0:
-                    self.velocity_y = 0
-            else:
-                # Mode natation : arrêter le mouvement mais garder un peu de velocity pour l'effet de coulée
-                if dy < 0:
-                    # Si on heurte le sol en coulant, on s'arrête mais on garde une petite velocity négative
-                    self.velocity_y = max(self.velocity_y, -1.0)
-                    y = math.floor(ny) + 1
-                elif dy > 0:
-                    # Si on heurte le plafond, on s'arrête
-                    self.velocity_y = min(self.velocity_y, 0.0)
+
+        # Axe X
+        x += dx
+        if self._is_colliding(x, y, z, world):
+            if dx > 0:  # Heurte un mur à droite
+                collided_block_x = round(x + w)
+                x = collided_block_x - 0.5 - w - 0.001
+            elif dx < 0:  # Heurte un mur à gauche
+                collided_block_x = round(x - w)
+                x = collided_block_x + 0.5 + w + 0.001
+
+        # Axe Z
+        z += dz
+        if self._is_colliding(x, y, z, world):
+            if dz > 0:  # Heurte un mur devant
+                collided_block_z = round(z + w)
+                z = collided_block_z - 0.5 - w - 0.001
+            elif dz < 0:  # Heurte un mur derrière
+                collided_block_z = round(z - w)
+                z = collided_block_z + 0.5 + w + 0.001
 
         self.position = [x, y, z]
 

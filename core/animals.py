@@ -9,6 +9,7 @@ from core.animal.poisson import Poisson
 from core.animal.poulpe import Poulpe
 from core.animal.giraf import Giraf
 from core.animal.frog import Frog
+from core.animal.snake import Snake
 from core.vegetation import Vegetation
 
 # Classe manager pour tous les animaux
@@ -27,6 +28,7 @@ class Animals:
             "fish1": Poisson,
             "poulpe": Poulpe,
             "giraf1": Giraf,
+            "snake": Snake,
             "frog": Frog
         }
 
