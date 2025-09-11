@@ -267,7 +267,6 @@ class World:
         return vertex_data_by_texture
 
     def get_direction_from_face_name(self, face_name):
-        # ... (code inchangé)
         if face_name == "front": return (0, 0, 1)
         if face_name == "back": return (0, 0, -1)
         if face_name == "left": return (-1, 0, 0)
@@ -302,12 +301,10 @@ class World:
             self.animal_batches[texture] = batch
 
     def get_biome_label(self, player_pos):
-        # ... (code inchangé)
         biome = self.getBiome(player_pos[0], player_pos[2])
         return f"Biome: {biome.capitalize()}"
 
     def get_height(self, x, z):
-        # ... (code inchangé)
         base = noise.pnoise2(x * 0.01, z * 0.01, octaves=3, base=WORLD_SEED) * 50
         detail = noise.pnoise2(x * 0.1, z * 0.1, octaves=2, base=WORLD_SEED) * 5
         return int(base + detail - 5) + 10
@@ -369,29 +366,27 @@ class World:
         pyglet.gl.glDisable(pyglet.gl.GL_BLEND)
 
     def normalize_to_uniform_simple(self, noise_value):
-        # ... (code inchangé)
         normalized = (noise_value + 1) / 2
         if normalized < 0.5: return 2 * (normalized ** 1.5)
         else: return 1 - 2 * ((1-normalized) ** 1.5)
 
     def getBiome(self, x, z, biome_scale=1000.0):
-        # ... (code inchangé)
         seed=WORLD_SEED
         octaves=8
         temp_raw = 0.7 * noise.pnoise2(x/biome_scale, z/biome_scale, octaves=octaves, base=seed) + 0.3 * noise.pnoise2(x/(biome_scale/5), z/(biome_scale/5), octaves=5, base=seed+50)
         humid_raw = 0.7 * noise.pnoise2((x+1000)/biome_scale, (z+1000)/biome_scale, octaves=octaves, base=seed+10) + 0.3 * noise.pnoise2((x+1000)/(biome_scale/5), (z+1000)/(biome_scale/5), octaves=5, base=seed+60)
         temp = self.normalize_to_uniform_simple(temp_raw)
         humid = self.normalize_to_uniform_simple(humid_raw)
-        if temp < 0.35: return "snow"
+        if temp < 0.25: return "snow"
         elif temp < 0.55:
-            if humid < 0.3: return "taiga"
-            elif humid < 0.7: return "forest"
+            if humid < 0.4: return "taiga"
+            elif humid < 0.6: return "forest"
             else: return "plains"
         elif temp < 0.65:
-            if humid < 0.6: return "savanna"
+            if humid < 0.8: return "savanna"
             else: return "desert"
         else:
-            if humid < 0.6: return "desert"
+            if humid < 0.5: return "desert"
             else: return "jungle"
 
     def is_solid(self, position):
