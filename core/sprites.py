@@ -6,10 +6,10 @@ from core.textures import Textures
 from core.vegetation import Vegetation
 
 class Sprites:
-    def __init__(self, seed=0, vegetation = None):
+    def __init__(self, seed=0, vegetation = None, textures=None):
         self.seed = seed
         self.sprite_positions = set() # To prevent overlapping sprites
-        self.textures = Textures() # Instance of the Textures class
+        self.textures = textures
         self.vegetation = vegetation
 
     def hash_noise(self, x, z, seed):

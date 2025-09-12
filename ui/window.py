@@ -4,11 +4,18 @@ from pyglet.graphics import shader
 from pyglet.window import key
 from pyglet.math import Mat4, Vec3
 from pyglet import shapes
+from enum import Enum
 
 from core.world import World
 from core.player import Player, EYE_HEIGHT
 from core.water import WaterPlane
 from ui.hud import HUD
+from ui.menu import Menu
+import config
+
+class GameState(Enum):
+    MENU = 1
+    GAME = 2
 
 
 
@@ -57,6 +64,9 @@ class Window(pyglet.window.Window):
         super().__init__(*args, **kwargs)
         self.set_minimum_size(300, 200)
         
+        self.game_state = GameState.MENU
+        self.menu = Menu(self, self.start_game)
+        
         # OpenGL context
         pyglet.gl.glClearColor(0.5, 0.7, 1.0, 1.0)
         self.fog_color = (0.7, 0.8, 0.9)  # Light blue/grey fog color
@@ -68,13 +78,27 @@ class Window(pyglet.window.Window):
         pyglet.gl.glFrontFace(pyglet.gl.GL_CCW)
         pyglet.gl.glDepthFunc(pyglet.gl.GL_LESS)
 
+        self.keys = key.KeyStateHandler()
+        self.push_handlers(self.keys)
+        pyglet.clock.schedule(self.update)
+        self.set_exclusive_mouse(False)
+
+    def start_game(self, seed):
+        if seed.isdigit():
+            config.WORLD_SEED = int(seed)
+        else:
+            config.WORLD_SEED = hash(seed) & 0xFFFFFFFF
+
+        self.game_state = GameState.GAME
+        self.set_exclusive_mouse(True)
+
         # Initialisation du système fantôme
         self.player = Player((0, 2, 0))
         self.camera = GhostCamera(self)
         
         # Shader program (votre code existant)
         self.program = self.create_shader_program()
-        self.world = World(self.program)
+        self.world = World(self.program, seed=config.WORLD_SEED)
         self.water = WaterPlane(size=500.0)  # Votre eau existante
         
         # HUD
@@ -106,11 +130,6 @@ class Window(pyglet.window.Window):
             self.blit_vertex_list = self.underwater_vertex_list
         else:
             self.blit_vertex_list = None
-
-        self.keys = key.KeyStateHandler()
-        self.push_handlers(self.keys)
-        pyglet.clock.schedule(self.update)
-        self.set_exclusive_mouse(True)
 
         # UI
         self.ui_batch = pyglet.graphics.Batch()
@@ -327,108 +346,129 @@ class Window(pyglet.window.Window):
 
     def on_resize(self, width, height):
         super().on_resize(width, height)
-        self.camera.on_resize(width, height)
-        self.create_fbo_attachments(width, height) # Update FBO attachments on resize
+        if self.game_state == GameState.MENU:
+            self.menu.on_resize(width, height)
+        elif self.game_state == GameState.GAME:
+            self.camera.on_resize(width, height)
+            self.create_fbo_attachments(width, height) # Update FBO attachments on resize
 
     def on_mouse_motion(self, x, y, dx, dy):
-        # Sensibilité de la souris
-        sensitivity = 0.15
-        self.player.rotate(-dy * sensitivity, dx * sensitivity)
+        if self.game_state == GameState.GAME:
+            # Sensibilité de la souris
+            sensitivity = 0.15
+            self.player.rotate(-dy * sensitivity, dx * sensitivity)
+
+    def on_mouse_press(self, x, y, button, modifiers):
+        if self.game_state == GameState.MENU:
+            self.menu.on_mouse_press(x, y, button, modifiers)
+
+    def on_text(self, text):
+        if self.game_state == GameState.MENU:
+            self.menu.on_text(text)
 
     def update(self, dt):
-        self.total_time += dt # Update total time
-        self.player.update(dt, self.keys, self.world)
-        self.camera.update(self.player)
-        
-        # Mettre à jour l'affichage de position
-        pos = self.player.position
-        self.info_label.text = f'Position: ({pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f}) | Pitch: {self.player.pitch:.1f}° | Yaw: {self.player.yaw:.1f}°'
-        mode_text = f"Mode: {'Ghost' if self.player.ghost_mode else 'Grounded'}"
-        if self.player.is_swimming:
-            mode_text += " (Swimming)"
-        self.mode_label.text = mode_text
+        if self.game_state == GameState.GAME:
+            self.total_time += dt # Update total time
+            self.player.update(dt, self.keys, self.world)
+            self.camera.update(self.player)
+            
+            # Mettre à jour l'affichage de position
+            pos = self.player.position
+            self.info_label.text = f'Position: ({pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f}) | Pitch: {self.player.pitch:.1f}° | Yaw: {self.player.yaw:.1f}°'
+            mode_text = f"Mode: {'Ghost' if self.player.ghost_mode else 'Grounded'}"
+            if self.player.is_swimming:
+                mode_text += " (Swimming)"
+            self.mode_label.text = mode_text
 
-        # Get current biome
-        current_biome = self.world.getBiome(pos[0], pos[2])
-        self.debug_label.text = f"Debug Info: {self.player.debug_info} | Biome: {current_biome.capitalize()}"
+            # Get current biome
+            current_biome = self.world.getBiome(pos[0], pos[2])
+            self.debug_label.text = f"Debug Info: {self.player.debug_info} | Biome: {current_biome.capitalize()}"
 
-        # Raycast to find targeted block
-        player_pos = self.player.position
-        # Player's eye position (add EYE_HEIGHT)
-        eye_pos = (player_pos[0], player_pos[1] + EYE_HEIGHT, player_pos[2])
+            # Raycast to find targeted block
+            player_pos = self.player.position
+            # Player's eye position (add EYE_HEIGHT)
+            eye_pos = (player_pos[0], player_pos[1] + EYE_HEIGHT, player_pos[2])
 
-        # Calculate looking direction vector
-        pitch_rad = math.radians(self.player.pitch)
-        yaw_rad = math.radians(self.player.yaw)
+            # Calculate looking direction vector
+            pitch_rad = math.radians(self.player.pitch)
+            yaw_rad = math.radians(self.player.yaw)
 
-        # Inverted yaw for correct direction
-        dx = math.sin(yaw_rad) * math.cos(pitch_rad)
-        dy = -math.sin(pitch_rad)
-        dz = -math.cos(yaw_rad) * math.cos(pitch_rad)
-        looking_vector = (dx, dy, dz)
+            # Inverted yaw for correct direction
+            dx = math.sin(yaw_rad) * math.cos(pitch_rad)
+            dy = -math.sin(pitch_rad)
+            dz = -math.cos(yaw_rad) * math.cos(pitch_rad)
+            looking_vector = (dx, dy, dz)
 
-        targeted_block_coords, targeted_block_type = self._raycast(eye_pos, looking_vector)
+            targeted_block_coords, targeted_block_type = self._raycast(eye_pos, looking_vector)
 
-        if targeted_block_type:
-            self.target_block_label.text = f"Target Block: {targeted_block_type.capitalize()} at {targeted_block_coords}"
-        else:
-            self.target_block_label.text = "Target Block: None"
-        
-        # Mettre à jour votre monde si vous l'avez
-        self.world.update(dt, self.player.position)
+            if targeted_block_type:
+                self.target_block_label.text = f"Target Block: {targeted_block_type.capitalize()} at {targeted_block_coords}"
+            else:
+                self.target_block_label.text = "Target Block: None"
+            
+            # Mettre à jour votre monde si vous l'avez
+            self.world.update(dt, self.player.position)
 
     def on_draw(self):
-        # Render to FBO
-        pyglet.gl.glBindFramebuffer(pyglet.gl.GL_FRAMEBUFFER, self.fbo)
-        self.clear() # Clear FBO
+        self.clear()
+        if self.game_state == GameState.MENU:
+            pyglet.gl.glDisable(pyglet.gl.GL_DEPTH_TEST)
+            pyglet.gl.glDisable(pyglet.gl.GL_CULL_FACE)
+            self.menu.draw()
+        elif self.game_state == GameState.GAME:
+            pyglet.gl.glEnable(pyglet.gl.GL_DEPTH_TEST)
+            pyglet.gl.glEnable(pyglet.gl.GL_CULL_FACE)
+            # Render to FBO
+            pyglet.gl.glBindFramebuffer(pyglet.gl.GL_FRAMEBUFFER, self.fbo)
+            self.clear() # Clear FBO
 
-        # Rendu 3D
-        self.program.use()
-        self.program['projection'] = self.camera.projection
-        self.program['view'] = self.camera.view
-        self.program['fog_color'] = self.fog_color
-        self.program['fog_start'] = self.fog_start
-        self.program['fog_end'] = self.fog_end
+            # Rendu 3D
+            self.program.use()
+            self.program['projection'] = self.camera.projection
+            self.program['view'] = self.camera.view
+            self.program['fog_color'] = self.fog_color
+            self.program['fog_start'] = self.fog_start
+            self.program['fog_end'] = self.fog_end
 
-        self.world.draw(self.player.position)
+            self.world.draw(self.player.position)
 
-        self.program.stop()
-        
-        # Dessiner votre eau si vous l'avez
-        self.water.draw(self.camera.projection, self.camera.view, self.total_time, self.player.position,
-                        self.fog_color, self.fog_start, self.fog_end)
-        
-        # Unbind FBO and render to screen
-        pyglet.gl.glBindFramebuffer(pyglet.gl.GL_FRAMEBUFFER, 0)
-        self.clear() # Clear screen
+            self.program.stop()
+            
+            # Dessiner votre eau si vous l'avez
+            self.water.draw(self.camera.projection, self.camera.view, self.total_time, self.player.position,
+                            self.fog_color, self.fog_start, self.fog_end)
+            
+            # Unbind FBO and render to screen
+            pyglet.gl.glBindFramebuffer(pyglet.gl.GL_FRAMEBUFFER, 0)
+            self.clear() # Clear screen
 
-        # Appliquer le filtre sous-marin si le joueur est sous l'eau
-        if self.player.is_swimming:
-            self.draw_underwater_filter()
-        else:
-            # If not underwater, draw the FBO texture directly to screen using the blit shader
-            if self.blit_program and self.blit_vertex_list:
-                pyglet.gl.glDisable(pyglet.gl.GL_BLEND) # Disable blending for full screen quad
-                
-                self.blit_program.use()
-                pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
-                pyglet.gl.glBindTexture(pyglet.gl.GL_TEXTURE_2D, self.fbo_texture)
-                self.blit_program['screen_texture'] = 0 # Assign texture unit 0
-                
-                self.blit_vertex_list.draw(pyglet.gl.GL_TRIANGLES)
-                self.blit_program.stop()
+            # Appliquer le filtre sous-marin si le joueur est sous l'eau
+            if self.player.is_swimming:
+                self.draw_underwater_filter()
+            else:
+                # If not underwater, draw the FBO texture directly to screen using the blit shader
+                if self.blit_program and self.blit_vertex_list:
+                    pyglet.gl.glDisable(pyglet.gl.GL_BLEND) # Disable blending for full screen quad
+                    
+                    self.blit_program.use()
+                    pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
+                    pyglet.gl.glBindTexture(pyglet.gl.GL_TEXTURE_2D, self.fbo_texture)
+                    self.blit_program['screen_texture'] = 0 # Assign texture unit 0
+                    
+                    self.blit_vertex_list.draw(pyglet.gl.GL_TRIANGLES)
+                    self.blit_program.stop()
 
-        # UI
-        # Ensure blending is enabled for UI elements
-        pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
-        pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
-        pyglet.gl.glDisable(pyglet.gl.GL_DEPTH_TEST) # Disable depth test for 2D UI
+            # UI
+            # Ensure blending is enabled for UI elements
+            pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
+            pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
+            pyglet.gl.glDisable(pyglet.gl.GL_DEPTH_TEST) # Disable depth test for 2D UI
 
-        self.hud.draw(self.width, self.height)
-        self.ui_batch.draw()
+            self.hud.draw(self.width, self.height)
+            self.ui_batch.draw()
 
-        # Restore depth test for 3D rendering (if it was enabled before)
-        pyglet.gl.glEnable(pyglet.gl.GL_DEPTH_TEST)
+            # Restore depth test for 3D rendering (if it was enabled before)
+            pyglet.gl.glEnable(pyglet.gl.GL_DEPTH_TEST)
 
     def draw_underwater_filter(self):
         if self.underwater_program and self.underwater_vertex_list:
@@ -450,10 +490,14 @@ class Window(pyglet.window.Window):
             pyglet.gl.glDisable(pyglet.gl.GL_BLEND)
 
     def on_key_press(self, symbol, modifiers):
-        if symbol == key.ESCAPE:
-            pyglet.app.exit()
-        elif symbol == key.T:
-            self.player.toggle_ghost_mode()
+        if self.game_state == GameState.MENU:
+            self.menu.on_key_press(symbol, modifiers)
+        elif self.game_state == GameState.GAME:
+            if symbol == key.ESCAPE:
+                self.game_state = GameState.MENU
+                self.set_exclusive_mouse(False)
+            elif symbol == key.T:
+                self.player.toggle_ghost_mode()
 
     def _raycast(self, position, vector, max_distance=10):
         """

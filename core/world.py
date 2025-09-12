@@ -8,8 +8,9 @@ from core.animals import Animals # Importer la nouvelle classe
 from config import CHUNK_SIZE, RENDER_DISTANCE, WORLD_SEED, SPRITE_RENDER_DISTANCE
 
 class World:
-    def __init__(self, program):
+    def __init__(self, program, seed=WORLD_SEED):
         self.program = program
+        self.seed = seed
         self.blocks = {}
         self.chunks = {}
         self.chunk_batches = {}
@@ -18,17 +19,17 @@ class World:
         self.chunk_meshing_queue = queue.Queue()
 
         self.textures = Textures()
-        self.vegetation = Vegetation(seed=WORLD_SEED)
+        self.vegetation = Vegetation(seed=self.seed)
         
         # Système de sprites (basé sur les chunks)
-        self.sprites = Sprites(seed=WORLD_SEED, vegetation=self.vegetation)
+        self.sprites = Sprites(seed=self.seed, vegetation=self.vegetation, textures=self.textures)
         self.sprite_chunks = {}
         self.sprite_meshing_queue = queue.Queue()
         self.sprite_batches = {}
         self.sprite_generation_queue = queue.Queue()
 
         # Système d'animaux (basé sur des entités)
-        self.animals = Animals(seed=WORLD_SEED, vegetation=self.vegetation)
+        self.animals = Animals(seed=self.seed, vegetation=self.vegetation)
         self.animals.set_textures(self.textures)
         self.animal_batches = {} # Un seul dictionnaire de batches, non lié aux chunks
 
@@ -305,8 +306,8 @@ class World:
         return f"Biome: {biome.capitalize()}"
 
     def get_height(self, x, z):
-        base = noise.pnoise2(x * 0.01, z * 0.01, octaves=3, base=WORLD_SEED) * 50
-        detail = noise.pnoise2(x * 0.1, z * 0.1, octaves=2, base=WORLD_SEED) * 5
+        base = noise.pnoise2(x * 0.01, z * 0.01, octaves=3, base=self.seed) * 50
+        detail = noise.pnoise2(x * 0.1, z * 0.1, octaves=2, base=self.seed) * 5
         return int(base + detail - 5) + 10
 
     def cleanup_chunks(self, player_pos):
@@ -371,7 +372,7 @@ class World:
         else: return 1 - 2 * ((1-normalized) ** 1.5)
 
     def getBiome(self, x, z, biome_scale=1000.0):
-        seed=WORLD_SEED
+        seed=self.seed
         octaves=8
         temp_raw = 0.7 * noise.pnoise2(x/biome_scale, z/biome_scale, octaves=octaves, base=seed) + 0.3 * noise.pnoise2(x/(biome_scale/5), z/(biome_scale/5), octaves=5, base=seed+50)
         humid_raw = 0.7 * noise.pnoise2((x+1000)/biome_scale, (z+1000)/biome_scale, octaves=octaves, base=seed+10) + 0.3 * noise.pnoise2((x+1000)/(biome_scale/5), (z+1000)/(biome_scale/5), octaves=5, base=seed+60)
