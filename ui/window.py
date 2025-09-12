@@ -65,7 +65,7 @@ class Window(pyglet.window.Window):
         self.set_minimum_size(300, 200)
         
         self.game_state = GameState.MENU
-        self.menu = Menu(self, self.start_game)
+        self.menu = Menu(self, self.create_game, self.join_game)
         
         # OpenGL context
         pyglet.gl.glClearColor(0.5, 0.7, 1.0, 1.0)
@@ -82,6 +82,14 @@ class Window(pyglet.window.Window):
         self.push_handlers(self.keys)
         pyglet.clock.schedule(self.update)
         self.set_exclusive_mouse(False)
+
+    def create_game(self, seed, port):
+        print(f"Creating game with seed: {seed} and port: {port}")
+        self.start_game(seed)
+
+    def join_game(self, seed, port):
+        print(f"Joining game with seed: {seed} and port: {port}")
+        self.start_game(seed)
 
     def start_game(self, seed):
         if seed.isdigit():

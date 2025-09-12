@@ -64,37 +64,56 @@ class Button:
                 self.on_click()
 
 class Menu:
-    def __init__(self, window, start_game_callback):
+    def __init__(self, window, create_game_callback, join_game_callback):
         self.window = window
-        self.start_game_callback = start_game_callback
+        self.create_game_callback = create_game_callback
+        self.join_game_callback = join_game_callback
 
         self.title = Label('pyCraft Infinite', font_size=36, x=window.width // 2, y=window.height - 100, anchor_x='center')
         
         self.seed_label = Label('Seed:', font_size=18, x=window.width // 2 - 100, y=window.height // 2, anchor_x='right')
         self.seed_input = TextInput(window.width // 2 - 90, window.height // 2 - 15, 180, 30)
 
-        self.start_button = Button(window.width // 2 - 50, window.height // 2 - 80, 100, 40, 'Start', self.start_game)
+        self.port_label = Label('Port:', font_size=18, x=window.width // 2 - 100, y=window.height // 2 - 40, anchor_x='right')
+        self.port_input = TextInput(window.width // 2 - 90, window.height // 2 - 55, 180, 30, text='4321')
 
-    def start_game(self):
+        self.create_button = Button(window.width // 2 - 110, window.height // 2 - 120, 100, 40, 'Create', self.create_game)
+        self.join_button = Button(window.width // 2 + 10, window.height // 2 - 120, 100, 40, 'Join', self.join_game)
+
+    def create_game(self):
         seed = self.seed_input.text
-        if self.start_game_callback:
-            self.start_game_callback(seed)
+        port = self.port_input.text
+        if self.create_game_callback:
+            self.create_game_callback(seed, port)
+
+    def join_game(self):
+        seed = self.seed_input.text
+        port = self.port_input.text
+        if self.join_game_callback:
+            self.join_game_callback(seed, port)
 
     def draw(self):
         self.title.draw()
         self.seed_label.draw()
         self.seed_input.draw()
-        self.start_button.draw()
+        self.port_label.draw()
+        self.port_input.draw()
+        self.create_button.draw()
+        self.join_button.draw()
 
     def on_mouse_press(self, x, y, button, modifiers):
         self.seed_input.on_mouse_press(x, y, button, modifiers)
-        self.start_button.on_mouse_press(x, y, button, modifiers)
+        self.port_input.on_mouse_press(x, y, button, modifiers)
+        self.create_button.on_mouse_press(x, y, button, modifiers)
+        self.join_button.on_mouse_press(x, y, button, modifiers)
 
     def on_text(self, text):
         self.seed_input.on_text(text)
+        self.port_input.on_text(text)
 
     def on_key_press(self, symbol, modifiers):
         self.seed_input.on_key_press(symbol, modifiers)
+        self.port_input.on_key_press(symbol, modifiers)
 
     def on_resize(self, width, height):
         self.title.x = width // 2
@@ -107,10 +126,27 @@ class Menu:
         self.seed_input.rectangle.y = height // 2 - 15
         self.seed_input.label.x = width // 2 - 85
         self.seed_input.label.y = height // 2
-        self.start_button.x = width // 2 - 50
-        self.start_button.y = height // 2 - 80
-        self.start_button.rectangle.x = width // 2 - 50
-        self.start_button.rectangle.y = height // 2 - 80
-        self.start_button.label.x = width // 2
-        self.start_button.label.y = height // 2 - 60
+
+        self.port_label.x = width // 2 - 100
+        self.port_label.y = height // 2 - 40
+        self.port_input.x = width // 2 - 90
+        self.port_input.y = height // 2 - 55
+        self.port_input.rectangle.x = width // 2 - 90
+        self.port_input.rectangle.y = height // 2 - 55
+        self.port_input.label.x = width // 2 - 85
+        self.port_input.label.y = height // 2 - 40
+
+        self.create_button.x = width // 2 - 110
+        self.create_button.y = height // 2 - 120
+        self.create_button.rectangle.x = width // 2 - 110
+        self.create_button.rectangle.y = height // 2 - 120
+        self.create_button.label.x = width // 2 - 60
+        self.create_button.label.y = height // 2 - 100
+
+        self.join_button.x = width // 2 + 10
+        self.join_button.y = height // 2 - 120
+        self.join_button.rectangle.x = width // 2 + 10
+        self.join_button.rectangle.y = height // 2 - 120
+        self.join_button.label.x = width // 2 + 60
+        self.join_button.label.y = height // 2 - 100
 
