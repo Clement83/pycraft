@@ -11,7 +11,10 @@ from core.player import Player, EYE_HEIGHT
 from core.water import WaterPlane
 from ui.hud import HUD
 from ui.menu import Menu
+from core.server import Server
+from core.client import Client
 import config
+from core.voxel_animals import draw_voxel_model
 
 class GameState(Enum):
     MENU = 1
@@ -82,14 +85,71 @@ class Window(pyglet.window.Window):
         self.push_handlers(self.keys)
         pyglet.clock.schedule(self.update)
         self.set_exclusive_mouse(False)
+        self.server = None
+        self.client = None
+
+        # UI
+        self.ui_batch = pyglet.graphics.Batch()
+        self.info_label = pyglet.text.Label(
+            '',
+            font_name='Arial',
+            font_size=12,
+            x=5, y=self.height - 5,
+            anchor_x='left', anchor_y='top',
+            batch=self.ui_batch
+        )
+        self.mode_label = pyglet.text.Label(
+            '',
+            font_name='Arial',
+            font_size=12,
+            x=5, y=self.height - 25,
+            anchor_x='left', anchor_y='top',
+            batch=self.ui_batch
+        )
+        self.debug_label = pyglet.text.Label(
+            '',
+            font_name='Arial',
+            font_size=12,
+            x=5, y=self.height - 45,
+            anchor_x='left', anchor_y='top',
+            batch=self.ui_batch
+        )
+        self.target_block_label = pyglet.text.Label(
+            '',
+            font_name='Arial',
+            font_size=12,
+            x=5, y=self.height - 65,
+            anchor_x='left', anchor_y='top',
+            batch=self.ui_batch
+        )
+        self.server_info_label = pyglet.text.Label(
+            '',
+            font_name='Arial',
+            font_size=12,
+            x=5, y=self.height - 85,
+            anchor_x='left', anchor_y='top',
+            batch=self.ui_batch
+        )
+
+    def on_close(self):
+        if self.server:
+            self.server.stop()
+        if self.client:
+            self.client.close()
+        super().on_close()
 
     def create_game(self, seed, port):
         print(f"Creating game with seed: {seed} and port: {port}")
+        self.server = Server(port=int(port), seed=seed)
+        self.server.start()
         self.start_game(seed)
 
-    def join_game(self, seed, port):
-        print(f"Joining game with seed: {seed} and port: {port}")
-        self.start_game(seed)
+    def join_game(self, seed, port, host):
+        print(f"Joining game with host: {host}, port: {port} and seed: {seed}")
+        self.client = Client(host, int(port))
+        seed = self.client.connect()
+        if seed:
+            self.start_game(seed)
 
     def start_game(self, seed):
         if seed.isdigit():
@@ -139,7 +199,7 @@ class Window(pyglet.window.Window):
         else:
             self.blit_vertex_list = None
 
-        # UI
+                # UI
         self.ui_batch = pyglet.graphics.Batch()
         self.info_label = pyglet.text.Label(
             '',
@@ -173,6 +233,7 @@ class Window(pyglet.window.Window):
             anchor_x='left', anchor_y='top',
             batch=self.ui_batch
         )
+
         self.total_time = 0.0 # Initialize total time
 
         # Framebuffer Object (FBO) for post-processing
@@ -375,6 +436,11 @@ class Window(pyglet.window.Window):
             self.menu.on_text(text)
 
     def update(self, dt):
+        if self.server:
+            self.server_info_label.text = f"Server: {self.server.get_client_count()} players connected"
+        else:
+            self.server_info_label.text = ""
+
         if self.game_state == GameState.GAME:
             self.total_time += dt # Update total time
             self.player.update(dt, self.keys, self.world)
@@ -504,6 +570,12 @@ class Window(pyglet.window.Window):
             if symbol == key.ESCAPE:
                 self.game_state = GameState.MENU
                 self.set_exclusive_mouse(False)
+                if self.server:
+                    self.server.stop()
+                    self.server = None
+                if self.client:
+                    self.client.close()
+                    self.client = None
             elif symbol == key.T:
                 self.player.toggle_ghost_mode()
 
