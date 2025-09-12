@@ -8,13 +8,14 @@ from enum import Enum
 
 from core.world import World
 from core.player import Player, EYE_HEIGHT
+from core.player_sprite import PlayerSprite
 from core.water import WaterPlane
 from ui.hud import HUD
 from ui.menu import Menu
 from core.server import Server
 from core.client import Client
 import config
-from core.voxel_animals import draw_voxel_model
+
 
 class GameState(Enum):
     MENU = 1
@@ -88,6 +89,9 @@ class Window(pyglet.window.Window):
         self.server = None
         self.client = None
 
+        # Initialize shader program here
+        self.program = self.create_shader_program() # Moved from start_game
+
         # UI
         self.ui_batch = pyglet.graphics.Batch()
         self.info_label = pyglet.text.Label(
@@ -142,6 +146,9 @@ class Window(pyglet.window.Window):
         print(f"Creating game with seed: {seed} and port: {port}")
         self.server = Server(port=int(port), seed=seed)
         self.server.start()
+        # Connect a client to the newly created server for the host player
+        self.client = Client('127.0.0.1', int(port), program=self.program)
+        self.client.connect()
         self.start_game(seed)
 
     def join_game(self, seed, port, host):
@@ -164,8 +171,6 @@ class Window(pyglet.window.Window):
         self.player = Player((0, 2, 0))
         self.camera = GhostCamera(self)
         
-        # Shader program (votre code existant)
-        self.program = self.create_shader_program()
         self.world = World(self.program, seed=config.WORLD_SEED)
         self.water = WaterPlane(size=500.0)  # Votre eau existante
         
@@ -446,6 +451,11 @@ class Window(pyglet.window.Window):
             self.player.update(dt, self.keys, self.world)
             self.camera.update(self.player)
             
+            # Send and receive player data if connected to a server
+            if self.client:
+                self.client.send_player_data(self.player.position, (self.player.pitch, self.player.yaw))
+                self.client.receive_player_data()
+            
             # Mettre à jour l'affichage de position
             pos = self.player.position
             self.info_label.text = f'Position: ({pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f}) | Pitch: {self.player.pitch:.1f}° | Yaw: {self.player.yaw:.1f}°'
@@ -505,6 +515,10 @@ class Window(pyglet.window.Window):
             self.program['fog_end'] = self.fog_end
 
             self.world.draw(self.player.position)
+
+            # Draw other players
+            if self.client:
+                self.client.draw_other_players(self.camera.view) # Pass view_matrix
 
             self.program.stop()
             

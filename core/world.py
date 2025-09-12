@@ -29,9 +29,8 @@ class World:
         self.sprite_generation_queue = queue.Queue()
 
         # Système d'animaux (basé sur des entités)
-        self.animals = Animals(seed=self.seed, vegetation=self.vegetation)
+        self.animals = Animals(seed=self.seed, vegetation=self.vegetation, program=self.program)
         self.animals.set_textures(self.textures)
-        self.animal_batches = {} # Un seul dictionnaire de batches, non lié aux chunks
 
         # Démarrer les workers pour le terrain et les sprites
         threading.Thread(target=self.chunk_generation_worker, daemon=True).start()
@@ -114,12 +113,6 @@ class World:
             "is_solid": self.is_solid
         }
         self.animals.update(dt, player_pos, world_info_funcs)
-        animal_render_data = self.animals.get_render_data()
-        if animal_render_data:
-            mesh_data = self.build_sprite_mesh(animal_render_data, perpendicular=False)
-            self.create_animal_batches(mesh_data)
-        else:
-            self.animal_batches.clear()
 
         # Meshing du terrain
         if not self.chunk_meshing_queue.empty():
@@ -292,14 +285,7 @@ class World:
             self.program.vertex_list_indexed(mesh_data['count'], pyglet.gl.GL_TRIANGLES, mesh_data['indices'], batch, None, position=('f', mesh_data['positions']), tex_coords=('f', mesh_data['tex_coords']), colors=('f', mesh_data['colors']))
             self.sprite_batches[(cx, cz)][texture] = batch
 
-    def create_animal_batches(self, mesh_data_by_texture):
-        """Crée les batches pour les animaux (non lié à un chunk)."""
-        self.animal_batches.clear()
-        for texture, mesh_data in mesh_data_by_texture.items():
-            if not mesh_data['indices']: continue
-            batch = pyglet.graphics.Batch()
-            self.program.vertex_list_indexed(mesh_data['count'], pyglet.gl.GL_TRIANGLES, mesh_data['indices'], batch, None, position=('f', mesh_data['positions']), tex_coords=('f', mesh_data['tex_coords']), colors=('f', mesh_data['colors']))
-            self.animal_batches[texture] = batch
+    
 
     def get_biome_label(self, player_pos):
         biome = self.getBiome(player_pos[0], player_pos[2])
@@ -357,11 +343,7 @@ class World:
                         batch.draw()
         
         # Dessin des animaux (batch unique)
-        for texture, batch in self.animal_batches.items():
-            pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
-            pyglet.gl.glBindTexture(texture.target, texture.id)
-            self.program['our_texture'] = 0
-            batch.draw()
+        self.animals.draw() # Added
 
         pyglet.gl.glEnable(pyglet.gl.GL_CULL_FACE)
         pyglet.gl.glDisable(pyglet.gl.GL_BLEND)
