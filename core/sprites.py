@@ -91,6 +91,8 @@ class Sprites:
             biome = "plage"
 
         textures_for_biome = biome_map.get(biome, [])
+        # TODO  remove texture leaves and log from sprite selection
+        textures_for_biome = [tex for tex in textures_for_biome if "leaves" not in tex and "log" not in tex]
         if not textures_for_biome:
             return None  # aucun sprite dispo pour ce biome
 

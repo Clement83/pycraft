@@ -134,6 +134,7 @@ class Window(pyglet.window.Window):
             anchor_x='left', anchor_y='top',
             batch=self.ui_batch
         )
+        self.current_biome_info = {}
 
     def on_close(self):
         if self.server:
@@ -464,9 +465,10 @@ class Window(pyglet.window.Window):
                 mode_text += " (Swimming)"
             self.mode_label.text = mode_text
 
-            # Get current biome
-            current_biome = self.world.getBiome(pos[0], pos[2])
-            self.debug_label.text = f"Debug Info: {self.player.debug_info} | Biome: {current_biome.capitalize()}"
+            # Get current biome info
+            self.current_biome_info = self.world.get_biome(pos[0], pos[2])
+            biome_name = self.current_biome_info.get('name', 'N/A')
+            self.debug_label.text = f"Debug Info: {self.player.debug_info} | Biome: {biome_name.capitalize()}"
 
             # Raycast to find targeted block
             player_pos = self.player.position
@@ -552,7 +554,9 @@ class Window(pyglet.window.Window):
             pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
             pyglet.gl.glDisable(pyglet.gl.GL_DEPTH_TEST) # Disable depth test for 2D UI
 
-            self.hud.draw(self.width, self.height)
+            temp = self.current_biome_info.get('temp', 0)
+            humid = self.current_biome_info.get('humid', 0)
+            self.hud.draw(self.width, self.height, temp, humid)
             self.ui_batch.draw()
 
             # Restore depth test for 3D rendering (if it was enabled before)

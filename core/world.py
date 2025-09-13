@@ -46,7 +46,8 @@ class World:
             for x in range(cx * CHUNK_SIZE, (cx + 1) * CHUNK_SIZE):
                 for z in range(cz * CHUNK_SIZE, (cz + 1) * CHUNK_SIZE):
                     h = self.get_height(x, z)
-                    biome = self.getBiome(x, z)
+                    biome_info = self.get_biome(x, z)
+                    biome = biome_info["name"]
 
                     if h > 0 and self.vegetation.has_tree(x, z, biome):
                         self.vegetation.generate(chunk_blocks, x, z, h + 1, biome)
@@ -79,7 +80,7 @@ class World:
             if abs(cx - player_chunk_x) <= SPRITE_RENDER_DISTANCE and abs(cz - player_chunk_z) <= SPRITE_RENDER_DISTANCE:
                 # Ensure status is set to generating to prevent duplicate queuing from main thread
                 self.sprite_chunks[(cx, cz)] = {'status': 'generating'} # Set status here
-                sprites_in_chunk = self.sprites.generate_for_chunk(cx, cz, self.get_height, self.getBiome)
+                sprites_in_chunk = self.sprites.generate_for_chunk(cx, cz, self.get_height, self.get_biome_name)
                 if sprites_in_chunk:
                     self.sprite_chunks[(cx, cz)] = {'sprites': sprites_in_chunk, 'status': 'generated'}
                     self.sprite_meshing_queue.put((cx, cz))
@@ -109,7 +110,7 @@ class World:
         # Mise à jour des animaux (par entité)
         world_info_funcs = {
             "get_height": self.get_height,
-            "get_biome": self.getBiome,
+            "get_biome": self.get_biome_name,
             "is_solid": self.is_solid
         }
         self.animals.update(dt, player_pos, world_info_funcs)
@@ -288,8 +289,8 @@ class World:
     
 
     def get_biome_label(self, player_pos):
-        biome = self.getBiome(player_pos[0], player_pos[2])
-        return f"Biome: {biome.capitalize()}"
+        biome_name = self.get_biome_name(player_pos[0], player_pos[2])
+        return f"Biome: {biome_name.capitalize()}"
 
     def get_height(self, x, z):
         base = noise.pnoise2(x * 0.01, z * 0.01, octaves=3, base=self.seed) * 50
@@ -353,24 +354,64 @@ class World:
         if normalized < 0.5: return 2 * (normalized ** 1.5)
         else: return 1 - 2 * ((1-normalized) ** 1.5)
 
-    def getBiome(self, x, z, biome_scale=1000.0):
-        seed=self.seed
-        octaves=8
-        temp_raw = 0.7 * noise.pnoise2(x/biome_scale, z/biome_scale, octaves=octaves, base=seed) + 0.3 * noise.pnoise2(x/(biome_scale/5), z/(biome_scale/5), octaves=5, base=seed+50)
-        humid_raw = 0.7 * noise.pnoise2((x+1000)/biome_scale, (z+1000)/biome_scale, octaves=octaves, base=seed+10) + 0.3 * noise.pnoise2((x+1000)/(biome_scale/5), (z+1000)/(biome_scale/5), octaves=5, base=seed+60)
+    def get_biome_name(self, x, z):
+        return self.get_biome(x, z)["name"]
+
+    def get_biome(self, x, z, biome_scale=2200.0):
+        seed = self.seed
+        octaves = 6
+
+        # Température brute
+        temp_raw = (
+            0.75 * noise.pnoise2(x / biome_scale, z / biome_scale, octaves=octaves, base=seed)
+            + 0.25 * noise.pnoise2(x / (biome_scale / 2.5), z / (biome_scale / 2.5), octaves=4, base=seed + 50)
+        )
+
+        # Humidité brute
+        humid_raw = (
+            0.75 * noise.pnoise2((x + 1000) / biome_scale, (z + 1000) / biome_scale, octaves=octaves, base=seed + 10)
+            + 0.25 * noise.pnoise2((x + 1000) / (biome_scale / 2.5), (z + 1000) / (biome_scale / 2.5), octaves=4, base=seed + 60)
+        )
+
+        # Normalisation
         temp = self.normalize_to_uniform_simple(temp_raw)
         humid = self.normalize_to_uniform_simple(humid_raw)
-        if temp < 0.25: return "snow"
-        elif temp < 0.55:
-            if humid < 0.4: return "taiga"
-            elif humid < 0.6: return "forest"
-            else: return "plains"
-        elif temp < 0.65:
-            if humid < 0.8: return "savanna"
-            else: return "desert"
-        else:
-            if humid < 0.5: return "desert"
-            else: return "jungle"
+
+        # Biomes avec transitions plus progressives
+        biome_name = "plains"
+        if temp < 0.25:  # très froid
+            if humid < 0.5:
+                biome_name = "tundra"
+            else:
+                biome_name = "snow"
+
+        elif temp < 0.45:  # froid → tempéré
+            if humid < 0.4:
+                biome_name = "taiga"
+            else:
+                biome_name = "forest"
+
+        elif temp < 0.60:  # zone tampon tempérée
+            if humid < 0.4:
+                biome_name = "plains"
+            else:
+                biome_name = "forest"
+
+        elif temp < 0.75:  # chaud
+            if humid < 0.35:
+                biome_name = "savanna"
+            else:
+                biome_name = "forest"
+
+        else:  # très chaud
+            if humid < 0.4:
+                biome_name = "desert"
+            else:
+                biome_name = "jungle"
+        
+        return {"name": biome_name, "temp": temp, "humid": humid}
+
+
 
     def is_solid(self, position):
         """Vérifie si un bloc à une position donnée est solide (y compris l'eau)."""
