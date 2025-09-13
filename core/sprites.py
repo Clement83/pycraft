@@ -43,6 +43,8 @@ class Sprites:
             return True
         elif biome == "snow" and val > (SPRITE_NOISE_THRESHOLD + 0.18):
             return True
+        elif biome == "tundra" and val > (SPRITE_NOISE_THRESHOLD + 0.18):
+            return True
         elif biome == "taiga" and val > (SPRITE_NOISE_THRESHOLD + 0.08):
             return True
         else:

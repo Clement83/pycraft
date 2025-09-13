@@ -118,7 +118,7 @@ class Vegetation:
         r = self.rand(x, z)
         height = r.randint(2, 3)
         for i in range(height):
-            blocks[(x, y+i, z)] = biome + "/cactus"
+            blocks[(x, y+i, z)] = "cactus"
 
     def _tree_acacia(self, biome, blocks, x, z, y):
         r = self.rand(x, z)

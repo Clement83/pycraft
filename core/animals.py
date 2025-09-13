@@ -11,7 +11,8 @@ from core.animal.poulpe import Poulpe
 from core.animal.giraf import Giraf
 from core.animal.frog import Frog
 from core.animal.snake import Snake
-from core.vegetation import Vegetation
+from core.animal.cerf import Cerf
+
 
 # Classe manager pour tous les animaux
 class Animals:
@@ -31,10 +32,14 @@ class Animals:
         # Mapper le nom du type d'animal (depuis le nom de fichier) à la classe
         self.animal_class_map = {
             "fish1": Poisson,
+            "shark": Poisson,
+            "tortule": Poisson,
             "poulpe": Poulpe,
             "giraf1": Giraf,
             "snake": Snake,
-            "frog": Frog
+            "frog": Frog,
+            "cerf": Cerf,
+            "cerf1": Cerf
         }
 
     def set_textures(self, textures):

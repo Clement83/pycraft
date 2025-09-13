@@ -351,27 +351,22 @@ class World:
 
     def normalize_to_uniform_simple(self, noise_value):
         normalized = (noise_value + 1) / 2
-        if normalized < 0.5: return 2 * (normalized ** 1.5)
-        else: return 1 - 2 * ((1-normalized) ** 1.5)
+        # Sigmoïde (lisse partout)
+        return 1 / (1 + math.exp(-10 * (normalized - 0.5)))
 
     def get_biome_name(self, x, z):
         return self.get_biome(x, z)["name"]
 
-    def get_biome(self, x, z, biome_scale=2200.0):
+    def get_biome(self, x, z, biome_scale=1000.0):
         seed = self.seed
         octaves = 6
 
         # Température brute
-        temp_raw = (
-            0.75 * noise.pnoise2(x / biome_scale, z / biome_scale, octaves=octaves, base=seed)
-            + 0.25 * noise.pnoise2(x / (biome_scale / 2.5), z / (biome_scale / 2.5), octaves=4, base=seed + 50)
-        )
+        temp_raw = noise.pnoise2(x / biome_scale, z / biome_scale, octaves=octaves, base=seed)
 
         # Humidité brute
-        humid_raw = (
-            0.75 * noise.pnoise2((x + 1000) / biome_scale, (z + 1000) / biome_scale, octaves=octaves, base=seed + 10)
-            + 0.25 * noise.pnoise2((x + 1000) / (biome_scale / 2.5), (z + 1000) / (biome_scale / 2.5), octaves=4, base=seed + 60)
-        )
+        humid_raw = noise.pnoise2((x + 1000) / biome_scale, (z + 1000) / biome_scale, octaves=octaves, base=seed + 10)
+
 
         # Normalisation
         temp = self.normalize_to_uniform_simple(temp_raw)
@@ -379,13 +374,13 @@ class World:
 
         # Biomes avec transitions plus progressives
         biome_name = "plains"
-        if temp < 0.25:  # très froid
+        if temp < 0.35:  # très froid
             if humid < 0.5:
                 biome_name = "tundra"
             else:
                 biome_name = "snow"
 
-        elif temp < 0.45:  # froid → tempéré
+        elif temp < 0.50:  # froid → tempéré
             if humid < 0.4:
                 biome_name = "taiga"
             else:
@@ -397,14 +392,14 @@ class World:
             else:
                 biome_name = "forest"
 
-        elif temp < 0.75:  # chaud
-            if humid < 0.35:
+        elif temp < 0.70:  # chaud
+            if humid < 0.40:
                 biome_name = "savanna"
             else:
                 biome_name = "forest"
 
         else:  # très chaud
-            if humid < 0.4:
+            if humid < 0.5:
                 biome_name = "desert"
             else:
                 biome_name = "jungle"
