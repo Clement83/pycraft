@@ -15,6 +15,7 @@ from ui.menu import Menu
 from core.server import Server
 from core.client import Client
 import config
+from ui.minimap import Minimap
 
 
 class GameState(Enum):
@@ -174,6 +175,10 @@ class Window(pyglet.window.Window):
         
         self.world = World(self.program, seed=config.WORLD_SEED)
         self.water = WaterPlane(size=500.0)  # Votre eau existante
+        
+        # Minimap
+        self.show_minimap = False
+        self.minimap = Minimap(self.world, self.world.textures, self.width, self.height)
         
         # HUD
         self.hud = HUD()
@@ -426,6 +431,11 @@ class Window(pyglet.window.Window):
         elif self.game_state == GameState.GAME:
             self.camera.on_resize(width, height)
             self.create_fbo_attachments(width, height) # Update FBO attachments on resize
+            if hasattr(self, 'minimap'):
+                self.minimap.window_width = width
+                self.minimap.window_height = height
+                # Re-calculate minimap size and position if needed, or let update_minimap handle it
+                # For now, just updating width/height should be enough as minimap recalculates positions
 
     def on_mouse_motion(self, x, y, dx, dy):
         if self.game_state == GameState.GAME:
@@ -559,6 +569,10 @@ class Window(pyglet.window.Window):
             self.hud.draw(self.width, self.height, temp, humid)
             self.ui_batch.draw()
 
+            if self.show_minimap:
+                self.minimap.update_minimap(self.player.position)
+                self.minimap.draw()
+
             # Restore depth test for 3D rendering (if it was enabled before)
             pyglet.gl.glEnable(pyglet.gl.GL_DEPTH_TEST)
 
@@ -596,6 +610,8 @@ class Window(pyglet.window.Window):
                     self.client = None
             elif symbol == key.T:
                 self.player.toggle_ghost_mode()
+            elif symbol == key.M:
+                self.show_minimap = not self.show_minimap
 
     def _raycast(self, position, vector, max_distance=10):
         """

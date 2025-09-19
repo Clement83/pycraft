@@ -406,7 +406,20 @@ class World:
         
         return {"name": biome_name, "temp": temp, "humid": humid}
 
+    def get_biome_at_chunk_center(self, cx, cz):
+        # Calculate the world coordinates of the center of the chunk
+        center_x = cx * CHUNK_SIZE + CHUNK_SIZE // 2
+        center_z = cz * CHUNK_SIZE + CHUNK_SIZE // 2
+        
+        # Get the height at the center of the chunk
+        height_at_center = self.get_height(center_x, center_z)
 
+        # If the height is below 0, it's water
+        if height_at_center < 0:
+            return "water"
+        
+        # Otherwise, return the biome name based on temperature and humidity
+        return self.get_biome_name(center_x, center_z)
 
     def is_solid(self, position):
         """Vérifie si un bloc à une position donnée est solide (y compris l'eau)."""
