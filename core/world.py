@@ -32,6 +32,8 @@ class World:
         self.animals = Animals(seed=self.seed, vegetation=self.vegetation, program=self.program)
         self.animals.set_textures(self.textures)
 
+        self.destroyed_blocks = set()
+
         # Démarrer les workers pour le terrain et les sprites
         threading.Thread(target=self.chunk_generation_worker, daemon=True).start()
         threading.Thread(target=self.sprite_generation_worker, daemon=True).start()
@@ -159,6 +161,121 @@ class World:
                 sprite_chunk_data['status'] = 'rendered'
 
         self.cleanup_chunks(player_pos)
+
+    def _rebuild_chunk(self, cx, cz):
+        # Re-mesh the chunk and update its batch. This is synchronous.
+        if (cx, cz) in self.chunks:
+            mesh_data = self.build_chunk_mesh(cx, cz)
+            self.create_chunk_batches(cx, cz, mesh_data)
+
+    def add_block(self, pos, block_type):
+        # If this position was previously destroyed, un-destroy it.
+        self.destroyed_blocks.discard(pos)
+
+        x, y, z = pos
+        cx, cz = int(x // CHUNK_SIZE), int(z // CHUNK_SIZE)
+
+        # Add to global and chunk-specific block lists
+        self.blocks[pos] = block_type
+        if (cx, cz) in self.chunks and 'blocks' in self.chunks[(cx, cz)]:
+            self.chunks[(cx, cz)]['blocks'][pos] = block_type
+
+        # Rebuild the chunk that contains the new block
+        self._rebuild_chunk(cx, cz)
+
+        # Check if the block is on a chunk boundary and rebuild neighbors if so
+        if x % CHUNK_SIZE == 0:
+            self._rebuild_chunk(cx - 1, cz)
+        elif x % CHUNK_SIZE == CHUNK_SIZE - 1:
+            self._rebuild_chunk(cx + 1, cz)
+        if z % CHUNK_SIZE == 0:
+            self._rebuild_chunk(cx, cz - 1)
+        elif z % CHUNK_SIZE == CHUNK_SIZE - 1:
+            self._rebuild_chunk(cx, cz + 1)
+
+    def remove_block(self, pos):
+        if pos not in self.blocks:
+            return
+
+        # Add to the set of destroyed blocks before doing anything else
+        self.destroyed_blocks.add(pos)
+
+        x, y, z = pos
+
+        # 1. Delete the block
+        del self.blocks[pos]
+        cx, cz = int(x // CHUNK_SIZE), int(z // CHUNK_SIZE)
+        if (cx, cz) in self.chunks and 'blocks' in self.chunks[(cx, cz)] and pos in self.chunks[(cx, cz)]['blocks']:
+            del self.chunks[(cx, cz)]['blocks'][pos]
+
+        # 2. Check and generate all 6 neighbors if they are now exposed and should exist
+        neighbors = [
+            (x + 1, y, z), (x - 1, y, z),
+            (x, y + 1, z), (x, y - 1, z),
+            (x, y, z + 1), (x, y, z - 1)
+        ]
+        for n_pos in neighbors:
+            self._check_and_generate_block_at(n_pos)
+
+        # 3. Rebuild all chunks affected by the change
+        chunks_to_rebuild = {(cx, cz)}
+        for n_pos in neighbors:
+            ncx, ncz = int(n_pos[0] // CHUNK_SIZE), int(n_pos[2] // CHUNK_SIZE)
+            chunks_to_rebuild.add((ncx, ncz))
+
+        for chunk_coord in chunks_to_rebuild:
+            self._rebuild_chunk(chunk_coord[0], chunk_coord[1])
+
+    def _check_and_generate_block_at(self, pos):
+        if pos in self.destroyed_blocks or pos in self.blocks:
+            return # Block was destroyed by player or already exists
+
+        x, y, z = pos
+
+        # A block should be generated if it's below the natural surface
+        # and is exposed to an existing air block.
+        h = self.get_height(x, z)
+        if y > h:
+            return # Above natural surface
+
+        # Check for exposure to air
+        is_exposed = False
+        neighbors = [
+            (x + 1, y, z), (x - 1, y, z),
+            (x, y + 1, z), (x, y - 1, z),
+            (x, y, z + 1), (x, y, z - 1)
+        ]
+        for n_pos in neighbors:
+            if n_pos not in self.blocks:
+                is_exposed = True
+                break
+
+        if not is_exposed:
+            return # Not exposed, no need to generate
+
+        # If we get here, the block is missing, not player-destroyed, below the surface, and exposed.
+        # We should generate it.
+        biome_info = self.get_biome(x, z)
+        biome = biome_info["name"]
+
+        if y == h:
+            block_type = biome if h >= 0 else "water"
+        else: # y < h
+            if h < 0:
+                block_type = "water"
+            elif biome in ["desert", "savanna"]:
+                block_type = biome
+            elif biome in ["tundra", "snow", "taiga"]:
+                block_type = "stone"
+            else:
+                block_type = "dirt"
+
+        # Add the new block to the world data
+        cx, cz = int(x // CHUNK_SIZE), int(z // CHUNK_SIZE)
+        self.blocks[pos] = block_type
+        if (cx, cz) in self.chunks and 'blocks' in self.chunks[(cx, cz)]:
+            self.chunks[(cx, cz)]['blocks'][pos] = block_type
+
 
     def build_chunk_mesh(self, cx, cz):
         chunk_data = self.chunks.get((cx, cz))

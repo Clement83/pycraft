@@ -1,7 +1,7 @@
 import math
 import pyglet
 from pyglet.graphics import shader
-from pyglet.window import key
+from pyglet.window import key, mouse
 from pyglet.math import Mat4, Vec3
 from pyglet import shapes
 from enum import Enum
@@ -446,6 +446,13 @@ class Window(pyglet.window.Window):
     def on_mouse_press(self, x, y, button, modifiers):
         if self.game_state == GameState.MENU:
             self.menu.on_mouse_press(x, y, button, modifiers)
+        elif self.game_state == GameState.GAME:
+            if button == mouse.LEFT:
+                if self.targeted_block_coords:
+                    self.world.remove_block(self.targeted_block_coords)
+            elif button == mouse.RIGHT:
+                if self.block_placement_coords:
+                    self.world.add_block(self.block_placement_coords, 'dirt')
 
     def on_text(self, text):
         if self.game_state == GameState.MENU:
@@ -482,23 +489,20 @@ class Window(pyglet.window.Window):
 
             # Raycast to find targeted block
             player_pos = self.player.position
-            # Player's eye position (add EYE_HEIGHT)
             eye_pos = (player_pos[0], player_pos[1] + EYE_HEIGHT, player_pos[2])
 
-            # Calculate looking direction vector
             pitch_rad = math.radians(self.player.pitch)
             yaw_rad = math.radians(self.player.yaw)
 
-            # Inverted yaw for correct direction
             dx = math.sin(yaw_rad) * math.cos(pitch_rad)
             dy = -math.sin(pitch_rad)
             dz = -math.cos(yaw_rad) * math.cos(pitch_rad)
             looking_vector = (dx, dy, dz)
 
-            targeted_block_coords, targeted_block_type = self._raycast(eye_pos, looking_vector)
+            self.targeted_block_coords, self.targeted_block_type, self.block_placement_coords = self._raycast(eye_pos, looking_vector)
 
-            if targeted_block_type:
-                self.target_block_label.text = f"Target Block: {targeted_block_type.capitalize()} at {targeted_block_coords}"
+            if self.targeted_block_type:
+                self.target_block_label.text = f"Target Block: {self.targeted_block_type.capitalize()} at {self.targeted_block_coords}"
             else:
                 self.target_block_label.text = "Target Block: None"
 
@@ -616,7 +620,7 @@ class Window(pyglet.window.Window):
     def _raycast(self, position, vector, max_distance=10):
         """
         Performs a raycast from a position in a given direction to find the first block hit.
-        Returns (block_x, block_y, block_z) and block_type, or None if no block is hit within max_distance.
+        Returns (block_x, block_y, block_z), block_type, and the previous position (prior_x, prior_y, prior_z).
         """
         x, y, z = position
         dx, dy, dz = vector
@@ -625,9 +629,6 @@ class Window(pyglet.window.Window):
         step_y = 1 if dy > 0 else -1
         step_z = 1 if dz > 0 else -1
 
-        # Calculate initial t values for each axis
-        # t_max_x is the distance to the next x-plane
-        # t_delta_x is the distance to cross one unit in x
         t_max_x = (math.floor(x) + step_x - x) / dx if dx != 0 else float('inf')
         t_max_y = (math.floor(y) + step_y - y) / dy if dy != 0 else float('inf')
         t_max_z = (math.floor(z) + step_z - z) / dz if dz != 0 else float('inf')
@@ -637,13 +638,15 @@ class Window(pyglet.window.Window):
         t_delta_z = abs(1 / dz) if dz != 0 else float('inf')
 
         current_x, current_y, current_z = int(math.floor(x)), int(math.floor(y)), int(math.floor(z))
+        prior_x, prior_y, prior_z = current_x, current_y, current_z
         distance = 0.0
 
         while distance < max_distance:
             block_type = self.world.blocks.get((current_x, current_y, current_z))
             if block_type is not None:
-                return (current_x, current_y, current_z), block_type
+                return (current_x, current_y, current_z), block_type, (prior_x, prior_y, prior_z)
 
+            prior_x, prior_y, prior_z = current_x, current_y, current_z
             if t_max_x < t_max_y and t_max_x < t_max_z:
                 current_x += step_x
                 distance = t_max_x
@@ -656,7 +659,7 @@ class Window(pyglet.window.Window):
                 current_z += step_z
                 distance = t_max_z
                 t_max_z += t_delta_z
-        return None, None
+        return None, None, None
 
     def run(self):
         pyglet.app.run()
