@@ -434,22 +434,29 @@ class World:
 
     def get_height(self, x, z):
         # Base terrain noise for rolling hills
-        base = noise.pnoise2(x * 0.01, z * 0.01, octaves=6, base=self.seed)
+        base = noise.pnoise2(x * 0.01, z * 0.01, octaves=20, base=self.seed)
 
         # Mountain noise for major elevation changes
-        mountain_noise = noise.pnoise2(x * 0.005, z * 0.005, octaves=4, base=self.seed + 1)
+        mountain_noise = noise.pnoise2(x * 0.01, z * 0.01, octaves=4, base=self.seed + 1)
+        ridge_noise = noise.pnoise2(x * 0.01, z * 0.01, octaves=4, base=self.seed + 2)
 
         # Remap mountain noise from [-1, 1] to a [0, 1] intensity, starting from a threshold
         # This creates a smooth transition from plains to mountains instead of a sharp cliff
-        mountain_threshold = 0.2
+        mountain_threshold = 0.0001
         mountain_intensity = (mountain_noise - mountain_threshold) / (1.0 - mountain_threshold)
         mountain_intensity = max(0, mountain_intensity)
 
+        # Add ridge detail to mountain intensity
+        ridge_threshold = 0.001
+        ridge_intensity = (ridge_noise - ridge_threshold) / (1.0 - ridge_threshold)
+        ridge_intensity = max(0, ridge_intensity)
+
         # Shape the intensity curve to make foothills less steep and peaks more dramatic
-        mountain_elevation = pow(mountain_intensity, 2) * 150
+        mountain_elevation = pow(mountain_intensity, 2) * 500
+        ridge_elevation = pow(ridge_intensity, 2) * -150
 
         # Combine base terrain with mountains
-        final_height = (base * 20) + mountain_elevation + 10
+        final_height = (base * -10) + mountain_elevation + ridge_elevation + 10
 
         return int(final_height)
 
@@ -514,7 +521,7 @@ class World:
 
     def get_biome(self, x, z, biome_scale=1000.0):
         seed = self.seed
-        octaves = 6
+        octaves = 100
 
         temp_raw = noise.pnoise2(x / biome_scale, z / biome_scale, octaves=octaves, base=seed)
         humid_raw = noise.pnoise2((x + 1000) / biome_scale, (z + 1000) / biome_scale, octaves=octaves, base=seed + 10)
