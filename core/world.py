@@ -14,19 +14,19 @@ class World:
         self.blocks = {}
         self.chunks = {}
         self.chunk_batches = {}
-        
+
         self.chunk_generation_queue = queue.Queue()
-        self.chunk_meshing_queue = queue.Queue()
+        self.chunk_batch_creation_queue = queue.Queue()
 
         self.textures = Textures()
         self.vegetation = Vegetation(seed=self.seed)
-        
+
         # Système de sprites (basé sur les chunks)
         self.sprites = Sprites(seed=self.seed, vegetation=self.vegetation, textures=self.textures)
         self.sprite_chunks = {}
-        self.sprite_meshing_queue = queue.Queue()
         self.sprite_batches = {}
         self.sprite_generation_queue = queue.Queue()
+        self.sprite_batch_creation_queue = queue.Queue()
 
         # Système d'animaux (basé sur des entités)
         self.animals = Animals(seed=self.seed, vegetation=self.vegetation, program=self.program)
@@ -63,29 +63,33 @@ class World:
                     if h < 0:
                         block_type_base = "water"
                         block_type_top = "water"
-                    
+
                     chunk_blocks[(x, h - 1, z)] = block_type_base
                     chunk_blocks[(x, h, z)] = block_type_top
-            
+
             self.blocks.update(chunk_blocks)
-            self.chunks[(cx, cz)] = {'blocks': chunk_blocks, 'status': 'generated'}
-            self.chunk_meshing_queue.put((cx, cz))
+            self.chunks[(cx, cz)] = {'blocks': chunk_blocks, 'status': 'meshing'}
+
+            mesh_data = self.build_chunk_mesh(cx, cz)
+            self.chunk_batch_creation_queue.put((cx, cz, mesh_data))
 
     def sprite_generation_worker(self):
         while True:
             cx, cz, player_chunk_x, player_chunk_z = self.sprite_generation_queue.get()
-            if (cx, cz) in self.sprite_chunks and self.sprite_chunks[(cx, cz)].get('status') in ['generating', 'generated']:
+            if (cx, cz) in self.sprite_chunks and self.sprite_chunks[(cx, cz)].get('status') not in ['queued', 'generating']:
                 continue
 
             if abs(cx - player_chunk_x) <= SPRITE_RENDER_DISTANCE and abs(cz - player_chunk_z) <= SPRITE_RENDER_DISTANCE:
-                # Ensure status is set to generating to prevent duplicate queuing from main thread
-                self.sprite_chunks[(cx, cz)] = {'status': 'generating'} # Set status here
+                self.sprite_chunks[(cx, cz)] = {'status': 'generating'}
                 sprites_in_chunk = self.sprites.generate_for_chunk(cx, cz, self.get_height, self.get_biome_name)
+
                 if sprites_in_chunk:
-                    self.sprite_chunks[(cx, cz)] = {'sprites': sprites_in_chunk, 'status': 'generated'}
-                    self.sprite_meshing_queue.put((cx, cz))
+                    self.sprite_chunks[(cx, cz)]['sprites'] = sprites_in_chunk
+                    self.sprite_chunks[(cx, cz)]['status'] = 'meshing'
+                    mesh_data = self.build_sprite_mesh(sprites_in_chunk, perpendicular=True)
+                    self.sprite_batch_creation_queue.put((cx, cz, mesh_data))
                 else:
-                    self.sprite_chunks.pop((cx, cz), None) # Remove if no sprites
+                    self.sprite_chunks[(cx, cz)]['status'] = 'empty'
 
     def update(self, dt, player_pos):
         chunk_x = int(player_pos[0] // CHUNK_SIZE)
@@ -103,7 +107,7 @@ class World:
         for dx in range(-SPRITE_RENDER_DISTANCE, SPRITE_RENDER_DISTANCE + 1):
             for dz in range(-SPRITE_RENDER_DISTANCE, SPRITE_RENDER_DISTANCE + 1):
                 cx, cz = chunk_x + dx, chunk_z + dz
-                if (cx, cz) not in self.sprite_chunks or self.sprite_chunks[(cx, cz)].get('status') not in ['queued', 'generating', 'generated']:
+                if (cx, cz) not in self.sprite_chunks:
                     self.sprite_chunks[(cx, cz)] = {'status': 'queued'}
                     self.sprite_generation_queue.put((cx, cz, chunk_x, chunk_z))
 
@@ -115,35 +119,31 @@ class World:
         }
         self.animals.update(dt, player_pos, world_info_funcs)
 
-        # Meshing du terrain
-        if not self.chunk_meshing_queue.empty():
-            cx, cz = self.chunk_meshing_queue.get()
+        # Création des batches de terrain (depuis le worker)
+        while not self.chunk_batch_creation_queue.empty():
+            cx, cz, mesh_data = self.chunk_batch_creation_queue.get()
             chunk_data = self.chunks.get((cx, cz))
-            if chunk_data and chunk_data.get('status') == 'generated':
-                chunk_data['status'] = 'meshing'
-                mesh_data = self.build_chunk_mesh(cx, cz)
+            if chunk_data:
                 self.create_chunk_batches(cx, cz, mesh_data)
                 chunk_data['status'] = 'rendered'
 
-        # Meshing des sprites
-        if not self.sprite_meshing_queue.empty():
-            cx, cz = self.sprite_meshing_queue.get()
+        # Création des batches de sprites (depuis le worker)
+        while not self.sprite_batch_creation_queue.empty():
+            cx, cz, mesh_data = self.sprite_batch_creation_queue.get()
             sprite_chunk_data = self.sprite_chunks.get((cx, cz))
-            if sprite_chunk_data and sprite_chunk_data.get('status') == 'generated':
-                mesh_data = self.build_sprite_mesh(sprite_chunk_data['sprites'], perpendicular=True)
+            if sprite_chunk_data:
                 self.create_sprite_batches(cx, cz, mesh_data)
-                sprite_chunk_data['status'] = 'meshed'
+                sprite_chunk_data['status'] = 'rendered'
 
         self.cleanup_chunks(player_pos)
 
     def build_chunk_mesh(self, cx, cz):
-        # ... (code inchangé)
         chunk_data = self.chunks.get((cx, cz))
         if not chunk_data or 'blocks' not in chunk_data:
             return {}
 
         vertex_data_by_texture = {}
-        
+
         faces = [
             ("front", ((-0.5, -0.5, 0.5), (0.5, -0.5, 0.5), (0.5, 0.5, 0.5), (-0.5, 0.5, 0.5))),
             ("back", ((0.5, -0.5, -0.5), (-0.5, -0.5, -0.5), (-0.5, 0.5, -0.5), (0.5, 0.5, -0.5))),
@@ -152,7 +152,7 @@ class World:
             ("top", ((-0.5, 0.5, 0.5), (0.5, 0.5, 0.5), (0.5, 0.5, -0.5), (-0.5, 0.5, -0.5))),
             ("bottom", ((-0.5, -0.5, -0.5), (0.5, -0.5, -0.5), (0.5, -0.5, 0.5), (-0.5, -0.5, 0.5)))
         ]
-        
+
         tex_coords = {
             "front": (0, 0, 1, 0, 1, 1, 0, 1),
             "back": (1, 0, 0, 0, 0, 1, 1, 1),
@@ -191,13 +191,10 @@ class World:
         for sprite_data in sprites_in_chunk:
             x, y, z = sprite_data["position"]
             sprite_type = sprite_data["type"]
-            
-            # Get width and height, with default values
-            # For animals, use their specific width/height. For vegetation, use default 1.0.
+
             width = sprite_data.get("width", 1.0) if not perpendicular else 1.0
             height = sprite_data.get("height", 1.0) if not perpendicular else 1.0
 
-            # Create vertices based on width and height
             half_width = width / 2
             sprite_quad_vertices = [(-half_width, 0.0, 0.0), (half_width, 0.0, 0.0), (half_width, height, 0.0), (-half_width, height, 0.0)]
 
@@ -205,51 +202,42 @@ class World:
             if texture is None: continue
             if texture not in vertex_data_by_texture: vertex_data_by_texture[texture] = {'positions': [], 'tex_coords': [], 'indices': [], 'colors': [], 'count': 0}
             mesh_data = vertex_data_by_texture[texture]
-            
+
             vc = mesh_data['count']
 
-            # Logique pour les animaux (plan unique orienté)
             if not perpendicular:
                 velocity = sprite_data.get("velocity", [0, 0, 0])
                 vx, _, vz = velocity
-                
-                # Calculer l'angle de rotation sur l'axe Y
+
                 if abs(vx) > 0.01 or abs(vz) > 0.01:
                     angle = math.atan2(vx, vz)
                 else:
-                    angle = 0 # Pas de mouvement, pas de rotation
+                    angle = 0
 
                 cos_a = math.cos(angle)
                 sin_a = math.sin(angle)
 
                 rotated_vertices = []
                 for v_x, v_y, v_z in sprite_quad_vertices:
-                    # Rotation 2D sur le plan XZ
                     rotated_x = v_x * cos_a
                     rotated_z = v_x * sin_a
-                    # Ajouter la position du monde
                     rotated_vertices.append((x + rotated_x, y + v_y + y_offset, z + rotated_z))
 
                 for vert in rotated_vertices:
                     mesh_data['positions'].extend(vert)
-                
+
                 mesh_data['tex_coords'].extend(sprite_tex_coords)
                 mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4)
                 mesh_data['indices'].extend((vc + i for i in sprite_indices))
                 mesh_data['count'] += 4
 
-            # Logique pour la végétation (croix 3D)
             else:
-                # Premier quad
                 for vert in sprite_quad_vertices: mesh_data['positions'].extend((x + vert[0], y + vert[1] + y_offset, z + vert[2]))
                 mesh_data['tex_coords'].extend(sprite_tex_coords)
                 mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4)
                 mesh_data['indices'].extend((vc + i for i in sprite_indices))
                 mesh_data['count'] += 4
 
-                # Deuxième quad perpendiculaire
-                # The vertices for the second quad should also respect the width and height
-                # For vegetation, width and height are 1.0, so half_width is 0.5
                 sprite_quad_vertices_2 = [(0.0, 0.0, -half_width), (0.0, 0.0, half_width), (0.0, height, half_width), (0.0, height, -half_width)]
                 vc_perp = mesh_data['count']
                 sprite_indices_2 = (vc_perp, vc_perp + 1, vc_perp + 2, vc_perp, vc_perp + 2, vc_perp + 3)
@@ -285,8 +273,6 @@ class World:
             batch = pyglet.graphics.Batch()
             self.program.vertex_list_indexed(mesh_data['count'], pyglet.gl.GL_TRIANGLES, mesh_data['indices'], batch, None, position=('f', mesh_data['positions']), tex_coords=('f', mesh_data['tex_coords']), colors=('f', mesh_data['colors']))
             self.sprite_batches[(cx, cz)][texture] = batch
-
-    
 
     def get_biome_label(self, player_pos):
         biome_name = self.get_biome_name(player_pos[0], player_pos[2])
@@ -342,7 +328,7 @@ class World:
                         pyglet.gl.glBindTexture(texture.target, texture.id)
                         self.program['our_texture'] = 0
                         batch.draw()
-        
+
         # Dessin des animaux (batch unique)
         self.animals.draw() # Added
 
@@ -351,7 +337,6 @@ class World:
 
     def normalize_to_uniform_simple(self, noise_value):
         normalized = (noise_value + 1) / 2
-        # Sigmoïde (lisse partout)
         return 1 / (1 + math.exp(-10 * (normalized - 0.5)))
 
     def get_biome_name(self, x, z):
@@ -361,67 +346,52 @@ class World:
         seed = self.seed
         octaves = 6
 
-        # Température brute
         temp_raw = noise.pnoise2(x / biome_scale, z / biome_scale, octaves=octaves, base=seed)
-
-        # Humidité brute
         humid_raw = noise.pnoise2((x + 1000) / biome_scale, (z + 1000) / biome_scale, octaves=octaves, base=seed + 10)
 
-
-        # Normalisation
         temp = self.normalize_to_uniform_simple(temp_raw)
         humid = self.normalize_to_uniform_simple(humid_raw)
 
-        # Biomes avec transitions plus progressives
         biome_name = "plains"
-        if temp < 0.35:  # très froid
+        if temp < 0.35:
             if humid < 0.5:
                 biome_name = "tundra"
             else:
                 biome_name = "snow"
-
-        elif temp < 0.50:  # froid → tempéré
+        elif temp < 0.50:
             if humid < 0.4:
                 biome_name = "taiga"
             else:
                 biome_name = "forest"
-
-        elif temp < 0.60:  # zone tampon tempérée
+        elif temp < 0.60:
             if humid < 0.4:
                 biome_name = "plains"
             else:
                 biome_name = "forest"
-
-        elif temp < 0.70:  # chaud
+        elif temp < 0.70:
             if humid < 0.40:
                 biome_name = "savanna"
             else:
                 biome_name = "forest"
-
-        else:  # très chaud
+        else:
             if humid < 0.5:
                 biome_name = "desert"
             else:
                 biome_name = "jungle"
-        
+
         return {"name": biome_name, "temp": temp, "humid": humid}
 
     def get_biome_at_chunk_center(self, cx, cz):
-        # Calculate the world coordinates of the center of the chunk
         center_x = cx * CHUNK_SIZE + CHUNK_SIZE // 2
         center_z = cz * CHUNK_SIZE + CHUNK_SIZE // 2
-        
-        # Get the height at the center of the chunk
+
         height_at_center = self.get_height(center_x, center_z)
 
-        # If the height is below 0, it's water
         if height_at_center < 0:
             return "water"
-        
-        # Otherwise, return the biome name based on temperature and humidity
+
         return self.get_biome_name(center_x, center_z)
 
     def is_solid(self, position):
-        """Vérifie si un bloc à une position donnée est solide (y compris l'eau)."""
         block_type = self.blocks.get(position)
         return block_type is not None

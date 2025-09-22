@@ -28,9 +28,9 @@ class GhostCamera:
     def __init__(self, window):
         self.window = window
         self.projection = Mat4.perspective_projection(
-            aspect=window.width / window.height, 
-            z_near=0.1, 
-            z_far=4000.0, 
+            aspect=window.width / window.height,
+            z_near=0.1,
+            z_far=4000.0,
             fov=65.0
         )
         self.view = Mat4()
@@ -39,27 +39,27 @@ class GhostCamera:
         """Met à jour la matrice de vue basée sur la position et rotation du joueur"""
         # Position de la caméra = position du joueur
         pos = Vec3(player.position[0], player.position[1] + EYE_HEIGHT, player.position[2])
-        
+
         # Calculer le point vers lequel on regarde
         pitch_rad = math.radians(player.pitch)
         yaw_rad = math.radians(player.yaw)
-        
+
         look_x = pos.x + math.sin(yaw_rad) * math.cos(pitch_rad)
         look_y = pos.y - math.sin(pitch_rad)
         look_z = pos.z - math.cos(yaw_rad) * math.cos(pitch_rad)
-        
+
         look_at = Vec3(look_x, look_y, look_z)
         up = Vec3(0, 1, 0)
-        
+
         # Créer la matrice de vue avec lookAt
         self.view = Mat4.look_at(pos, look_at, up)
 
     def on_resize(self, width, height):
         """Met à jour la projection lors du redimensionnement"""
         self.projection = Mat4.perspective_projection(
-            aspect=width / height, 
-            z_near=0.1, 
-            z_far=4000.0, 
+            aspect=width / height,
+            z_near=0.1,
+            z_far=4000.0,
             fov=65.0
         )
 
@@ -68,16 +68,16 @@ class Window(pyglet.window.Window):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_minimum_size(300, 200)
-        
+
         self.game_state = GameState.MENU
         self.menu = Menu(self, self.create_game, self.join_game)
-        
+
         # OpenGL context
         pyglet.gl.glClearColor(0.5, 0.7, 1.0, 1.0)
         self.fog_color = (0.7, 0.8, 0.9)  # Light blue/grey fog color
         self.fog_density = 0.01 # Adjust as needed
-        self.fog_start = 60.0 # Fog starts at this distance
-        self.fog_end = 100.0 # Fog is fully opaque at this distance
+        self.fog_start = config.FOG_START # Fog starts at this distance
+        self.fog_end = config.FOG_END # Fog is fully opaque at this distance
         pyglet.gl.glEnable(pyglet.gl.GL_DEPTH_TEST)
         pyglet.gl.glEnable(pyglet.gl.GL_CULL_FACE)
         pyglet.gl.glFrontFace(pyglet.gl.GL_CCW)
@@ -172,17 +172,17 @@ class Window(pyglet.window.Window):
         # Initialisation du système fantôme
         self.player = Player((0, 2, 0))
         self.camera = GhostCamera(self)
-        
+
         self.world = World(self.program, seed=config.WORLD_SEED)
         self.water = WaterPlane(size=500.0)  # Votre eau existante
-        
+
         # Minimap
         self.show_minimap = False
         self.minimap = Minimap(self.world, self.world.textures, self.width, self.height)
-        
+
         # HUD
         self.hud = HUD()
-        
+
         # Underwater filter initialization
         self.underwater_program = self.create_underwater_shader_program()
         if self.underwater_program:
@@ -461,12 +461,12 @@ class Window(pyglet.window.Window):
             self.total_time += dt # Update total time
             self.player.update(dt, self.keys, self.world)
             self.camera.update(self.player)
-            
+
             # Send and receive player data if connected to a server
             if self.client:
                 self.client.send_player_data(self.player.position, (self.player.pitch, self.player.yaw))
                 self.client.receive_player_data()
-            
+
             # Mettre à jour l'affichage de position
             pos = self.player.position
             self.info_label.text = f'Position: ({pos[0]:.1f}, {pos[1]:.1f}, {pos[2]:.1f}) | Pitch: {self.player.pitch:.1f}° | Yaw: {self.player.yaw:.1f}°'
@@ -501,7 +501,7 @@ class Window(pyglet.window.Window):
                 self.target_block_label.text = f"Target Block: {targeted_block_type.capitalize()} at {targeted_block_coords}"
             else:
                 self.target_block_label.text = "Target Block: None"
-            
+
             # Mettre à jour votre monde si vous l'avez
             self.world.update(dt, self.player.position)
 
@@ -533,11 +533,11 @@ class Window(pyglet.window.Window):
                 self.client.draw_other_players(self.camera.view) # Pass view_matrix
 
             self.program.stop()
-            
+
             # Dessiner votre eau si vous l'avez
             self.water.draw(self.camera.projection, self.camera.view, self.total_time, self.player.position,
                             self.fog_color, self.fog_start, self.fog_end)
-            
+
             # Unbind FBO and render to screen
             pyglet.gl.glBindFramebuffer(pyglet.gl.GL_FRAMEBUFFER, 0)
             self.clear() # Clear screen
@@ -549,12 +549,12 @@ class Window(pyglet.window.Window):
                 # If not underwater, draw the FBO texture directly to screen using the blit shader
                 if self.blit_program and self.blit_vertex_list:
                     pyglet.gl.glDisable(pyglet.gl.GL_BLEND) # Disable blending for full screen quad
-                    
+
                     self.blit_program.use()
                     pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
                     pyglet.gl.glBindTexture(pyglet.gl.GL_TEXTURE_2D, self.fbo_texture)
                     self.blit_program['screen_texture'] = 0 # Assign texture unit 0
-                    
+
                     self.blit_vertex_list.draw(pyglet.gl.GL_TRIANGLES)
                     self.blit_program.stop()
 
@@ -580,19 +580,19 @@ class Window(pyglet.window.Window):
         if self.underwater_program and self.underwater_vertex_list:
             pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
             pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
-            
+
             self.underwater_program.use()
             self.underwater_program['time'] = self.total_time
             self.underwater_program['resolution'] = (float(self.width), float(self.height))
-            
+
             # Pass the FBO texture as a uniform
             pyglet.gl.glActiveTexture(pyglet.gl.GL_TEXTURE0)
             pyglet.gl.glBindTexture(pyglet.gl.GL_TEXTURE_2D, self.fbo_texture)
             self.underwater_program['scene_texture'] = 0 # Assign texture unit 0
-            
+
             self.underwater_vertex_list.draw(pyglet.gl.GL_TRIANGLES)
             self.underwater_program.stop()
-            
+
             pyglet.gl.glDisable(pyglet.gl.GL_BLEND)
 
     def on_key_press(self, symbol, modifiers):
