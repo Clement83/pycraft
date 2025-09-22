@@ -43,15 +43,21 @@ class World:
                 continue
 
             chunk_blocks = {}
+
+            # Pre-calculate heights in and around the chunk to avoid redundant noise calls
+            surface_heights = {}
+            for local_x in range(-1, CHUNK_SIZE + 1):
+                for local_z in range(-1, CHUNK_SIZE + 1):
+                    world_x, world_z = cx * CHUNK_SIZE + local_x, cz * CHUNK_SIZE + local_z
+                    surface_heights[(world_x, world_z)] = self.get_height(world_x, world_z)
+
             for x in range(cx * CHUNK_SIZE, (cx + 1) * CHUNK_SIZE):
                 for z in range(cz * CHUNK_SIZE, (cz + 1) * CHUNK_SIZE):
-                    h = self.get_height(x, z)
+                    h = surface_heights.get((x, z), 0)
                     biome_info = self.get_biome(x, z)
                     biome = biome_info["name"]
 
-                    if h > 0 and self.vegetation.has_tree(x, z, biome):
-                        self.vegetation.generate(chunk_blocks, x, z, h + 1, biome)
-
+                    # Determine block types based on biome
                     block_type_top = biome
                     if biome in ["desert", "savanna"]:
                         block_type_base = biome
@@ -61,11 +67,28 @@ class World:
                         block_type_base = "dirt"
 
                     if h < 0:
-                        block_type_base = "water"
                         block_type_top = "water"
+                        block_type_base = "water"
 
-                    chunk_blocks[(x, h - 1, z)] = block_type_base
+                    # Generate the surface block
                     chunk_blocks[(x, h, z)] = block_type_top
+
+                    # Generate trees on the surface
+                    if h > 0 and self.vegetation.has_tree(x, z, biome):
+                        self.vegetation.generate(chunk_blocks, x, z, h + 1, biome)
+
+                    # Get neighbor heights from the pre-calculated map
+                    h_xp = surface_heights.get((x + 1, z), h)
+                    h_xm = surface_heights.get((x - 1, z), h)
+                    h_zp = surface_heights.get((x, z + 1), h)
+                    h_zm = surface_heights.get((x, z - 1), h)
+
+                    # Find the minimum height among the column and its direct neighbors
+                    min_neighbor_h = min(h, h_xp, h_xm, h_zp, h_zm)
+
+                    # Fill downwards from the surface to seal any side-holes
+                    for y in range(h - 1, min_neighbor_h - 1, -1):
+                        chunk_blocks[(x, y, z)] = block_type_base if y >= 0 else "water"
 
             self.blocks.update(chunk_blocks)
             self.chunks[(cx, cz)] = {'blocks': chunk_blocks, 'status': 'meshing'}
