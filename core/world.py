@@ -92,6 +92,20 @@ class World:
                     for y in range(h - 1, min_neighbor_h - 1, -1):
                         chunk_blocks[(x, y, z)] = block_type_base if y >= 0 else "water"
 
+            # Carve caves using 3D noise
+            for pos in list(chunk_blocks.keys()):
+                x, y, z = pos
+                surface_h = surface_heights.get((x, z), 0)
+                # Don't carve near the surface or in water
+                if y >= surface_h - 3 or y < 0:
+                    continue
+
+                # 3D noise for caves
+                cave_noise = noise.pnoise3(x * 0.05, y * 0.05, z * 0.05, octaves=2, base=self.seed + 2)
+
+                if cave_noise > 0.6:
+                    del chunk_blocks[pos]
+
             self.blocks.update(chunk_blocks)
             self.chunks[(cx, cz)] = {'blocks': chunk_blocks, 'status': 'meshing'}
 
@@ -419,9 +433,25 @@ class World:
         return f"Biome: {biome_name.capitalize()}"
 
     def get_height(self, x, z):
-        base = noise.pnoise2(x * 0.01, z * 0.01, octaves=3, base=self.seed) * 50
-        detail = noise.pnoise2(x * 0.1, z * 0.1, octaves=2, base=self.seed) * 5
-        return int(base + detail - 5) + 10
+        # Base terrain noise for rolling hills
+        base = noise.pnoise2(x * 0.01, z * 0.01, octaves=6, base=self.seed)
+
+        # Mountain noise for major elevation changes
+        mountain_noise = noise.pnoise2(x * 0.005, z * 0.005, octaves=4, base=self.seed + 1)
+
+        # Remap mountain noise from [-1, 1] to a [0, 1] intensity, starting from a threshold
+        # This creates a smooth transition from plains to mountains instead of a sharp cliff
+        mountain_threshold = 0.2
+        mountain_intensity = (mountain_noise - mountain_threshold) / (1.0 - mountain_threshold)
+        mountain_intensity = max(0, mountain_intensity)
+
+        # Shape the intensity curve to make foothills less steep and peaks more dramatic
+        mountain_elevation = pow(mountain_intensity, 2) * 150
+
+        # Combine base terrain with mountains
+        final_height = (base * 20) + mountain_elevation + 10
+
+        return int(final_height)
 
     def cleanup_chunks(self, player_pos):
         to_delete = []
