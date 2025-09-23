@@ -11,8 +11,8 @@ class HUD:
             '', font_name='Arial', font_size=12,
             x=10, y=30, anchor_x='left', anchor_y='bottom'
         )
-
-    def draw(self, window_width, window_height, temp=0.0, humid=0.0):
+        self.selected_block_sprite = None
+    def draw(self, window_width, window_height, temp=0.0, humid=0.0, selected_block_texture=None):
         # Draw crosshair
         crosshair_size = 10
         crosshair_thickness = 2
@@ -32,3 +32,13 @@ class HUD:
         self.temp_label.draw()
         self.humid_label.draw()
 
+        # Draw selected block texture
+        if selected_block_texture:
+            if not self.selected_block_sprite or self.selected_block_sprite.image != selected_block_texture:
+                self.selected_block_sprite = pyglet.sprite.Sprite(selected_block_texture)
+                self.selected_block_sprite.scale = 2.0 # Make it bigger
+
+            # Position it next to the selected block label (which is at y=30)
+            self.selected_block_sprite.x = window_width / 2 + 100
+            self.selected_block_sprite.y = 30
+            self.selected_block_sprite.draw()

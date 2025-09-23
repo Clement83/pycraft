@@ -13,6 +13,8 @@ SWIM_GRAVITY = -10.0 # Coule un peu plus vite pour être plus visible
 SWIM_SPEED_MULTIPLIER = 1.5 # faster movement in water
 SWIM_VERTICAL_SPEED = 5.0 # Speed for ascending/descending in water
 
+from core.textures import block_types
+
 class Player:
     def __init__(self, position=(0, 2, 0)):
         self.position = list(position)
@@ -26,6 +28,11 @@ class Player:
         self.velocity_y = 0.0
         self.on_ground = False
         self.debug_info = ""
+
+        # Block selection
+        self.block_types = block_types
+        self.selected_block_index = self.block_types.index('dirt') if 'dirt' in self.block_types else 0
+        self.selected_block = self.block_types[self.selected_block_index]
 
     def toggle_ghost_mode(self):
         self.ghost_mode = not self.ghost_mode
@@ -49,7 +56,7 @@ class Player:
 
         # Swimming condition: player's eyes are at or below water level (y=0)
         if self.position[1] + EYE_HEIGHT < 0:
-            if (self.is_swimming): 
+            if (self.is_swimming):
                 self.velocity_y = 0
             self.is_swimming = True
         else:
@@ -94,15 +101,15 @@ class Player:
                 self.position[1] += movement_speed
             if keys[key.LSHIFT]:
                 self.position[1] -= movement_speed
-            
+
             self.position[0] += dx
             self.position[2] += dz
         elif self.is_swimming:
             # Swimming mode: déplacement comme en ghost mais avec collisions et gravité de natation
-            
+
             # Appliquer la gravité de natation
             self.velocity_y += SWIM_GRAVITY * dt
-            
+
             # Mouvement vertical basé sur le pitch (comme en ghost mode)
             pitch_rad = math.radians(self.pitch)
             forward_y = -math.sin(pitch_rad)
@@ -111,16 +118,16 @@ class Player:
                 dy += forward_y * movement_speed * SWIM_SPEED_MULTIPLIER
             if keys[key.S] or keys[key.DOWN]:
                 dy -= forward_y * movement_speed * SWIM_SPEED_MULTIPLIER
-            
+
             # Mouvement vertical direct avec espace et shift
             if keys[key.SPACE]:
                 dy += movement_speed * SWIM_SPEED_MULTIPLIER
             if keys[key.LSHIFT]:
                 dy -= movement_speed * SWIM_SPEED_MULTIPLIER
-            
+
             # Ajouter la vélocité verticale due à la gravité
             dy += self.velocity_y * dt
-            
+
             # Appliquer le ralentissement de la natation aux mouvements horizontaux
             dx *= SWIM_SPEED_MULTIPLIER
             dz *= SWIM_SPEED_MULTIPLIER
@@ -138,7 +145,7 @@ class Player:
 
             if keys[key.SPACE] and self.on_ground:
                 self.velocity_y = JUMP_HEIGHT
-            
+
             self.velocity_y += GRAVITY * dt
             dy = self.velocity_y * dt
 
@@ -205,3 +212,8 @@ class Player:
         self.pitch += delta_pitch
         self.yaw += delta_yaw
         self.pitch = max(-90, min(90, self.pitch))
+
+    def change_selected_block(self, direction):
+        """Changes the selected block based on scroll direction."""
+        self.selected_block_index = (self.selected_block_index + direction) % len(self.block_types)
+        self.selected_block = self.block_types[self.selected_block_index]

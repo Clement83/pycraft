@@ -135,6 +135,14 @@ class Window(pyglet.window.Window):
             anchor_x='left', anchor_y='top',
             batch=self.ui_batch
         )
+        self.selected_block_label = pyglet.text.Label(
+            '',
+            font_name='Arial',
+            font_size=14,
+            x=self.width // 2, y=30,
+            anchor_x='center', anchor_y='center',
+            batch=self.ui_batch
+        )
         self.current_biome_info = {}
 
     def on_close(self):
@@ -443,6 +451,10 @@ class Window(pyglet.window.Window):
             sensitivity = 0.15
             self.player.rotate(-dy * sensitivity, dx * sensitivity)
 
+    def on_mouse_scroll(self, x, y, scroll_x, scroll_y):
+        if self.game_state == GameState.GAME:
+            self.player.change_selected_block(-int(scroll_y))
+
     def on_mouse_press(self, x, y, button, modifiers):
         if self.game_state == GameState.MENU:
             self.menu.on_mouse_press(x, y, button, modifiers)
@@ -452,7 +464,7 @@ class Window(pyglet.window.Window):
                     self.world.remove_block(self.targeted_block_coords)
             elif button == mouse.RIGHT:
                 if self.block_placement_coords:
-                    self.world.add_block(self.block_placement_coords, 'dirt')
+                    self.world.add_block(self.block_placement_coords, self.player.selected_block)
 
     def on_text(self, text):
         if self.game_state == GameState.MENU:
@@ -509,6 +521,8 @@ class Window(pyglet.window.Window):
             # Mettre à jour votre monde si vous l'avez
             self.world.update(dt, self.player.position)
 
+            # Update selected block label
+            self.selected_block_label.text = f"Selected: {self.player.selected_block.capitalize()}"
     def on_draw(self):
         self.clear()
         if self.game_state == GameState.MENU:
@@ -570,7 +584,8 @@ class Window(pyglet.window.Window):
 
             temp = self.current_biome_info.get('temp', 0)
             humid = self.current_biome_info.get('humid', 0)
-            self.hud.draw(self.width, self.height, temp, humid)
+            selected_block_texture = self.world.textures.get(self.player.selected_block)
+            self.hud.draw(self.width, self.height, temp, humid, selected_block_texture)
             self.ui_batch.draw()
 
             if self.show_minimap:

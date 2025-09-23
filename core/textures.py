@@ -27,7 +27,7 @@ class Textures:
                     print(f"[Textures] Chargée : {name}")
                 except Exception as e:
                     print(f"[Textures] Impossible de charger {filename} : {e}")
-        
+
         # Load sprite textures for biomes
         if os.path.exists(sprite_base_path):
             for biome_dir in os.listdir(sprite_base_path):
@@ -91,3 +91,6 @@ class Textures:
                     biome_map[biome_dir] = []
                 biome_map[biome_dir].append(key)
         return biome_map
+
+# List of block types that can be placed by the player
+block_types = [name for name in Textures().textures.keys() if name in Textures().biome_textures]
