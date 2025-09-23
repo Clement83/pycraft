@@ -26,13 +26,12 @@ class PlayerSprite:
             "assets/annimals/plains/frog.png",
             "assets/annimals/savanna/giraf1.png",
             "assets/annimals/taiga/frog.png",
-            "assets/annimals/water/fish1.png",
-            "assets/annimals/water/poulpe.png"
-        ]
+            "assets/annimals/sea_floor/fish1.png",
+            "assets/annimals/sea_floor/poulpe.png"        ]
 
         # Choose a random animal sprite
         chosen_sprite_path = random.choice(animal_sprites)
-        
+
         try:
             self.texture = pyglet.image.load(chosen_sprite_path).get_texture()
             # Set texture parameters for pixel art
@@ -49,7 +48,7 @@ class PlayerSprite:
         width = 1.0
         height = 1.0
         half_width = width / 2.0
-        
+
         # Vertices for a quad facing the positive Z axis (will be rotated to face camera)
         # (x, y, z)
         self.base_vertices = [
@@ -58,21 +57,21 @@ class PlayerSprite:
              half_width, height, 0.0, # Top-right
             -half_width, height, 0.0   # Top-left
         ]
-        
+
         self.tex_coords = [
             0.0, 0.0,  # Bottom-left
             1.0, 0.0,  # Bottom-right
             1.0, 1.0,  # Top-right
             0.0, 1.0   # Top-left
         ]
-        
+
         self.colors = [
             1.0, 1.0, 1.0, 1.0, # White
             1.0, 1.0, 1.0, 1.0,
             1.0, 1.0, 1.0, 1.0,
             1.0, 1.0, 1.0, 1.0
         ]
-        
+
         self.indices = [0, 1, 2, 0, 2, 3] # Two triangles for the quad
 
         self.batch = pyglet.graphics.Batch()
@@ -122,8 +121,8 @@ class PlayerSprite:
                 ])
 
         if self.vertex_list:
-            self.vertex_list.delete() 
-        
+            self.vertex_list.delete()
+
         self.vertex_list = self.program.vertex_list_indexed(
             4, pyglet.gl.GL_TRIANGLES, self.indices, self.batch, None,
             position=('f', transformed_vertices),
@@ -141,7 +140,7 @@ class PlayerSprite:
             # Enable blending for transparency
             pyglet.gl.glEnable(pyglet.gl.GL_BLEND)
             pyglet.gl.glBlendFunc(pyglet.gl.GL_SRC_ALPHA, pyglet.gl.GL_ONE_MINUS_SRC_ALPHA)
-            
+
             # Disable face culling for billboards (both sides should be visible)
             pyglet.gl.glDisable(pyglet.gl.GL_CULL_FACE)
 

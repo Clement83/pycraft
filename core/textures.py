@@ -22,7 +22,7 @@ class Textures:
                 try:
                     texture = pyglet.image.load(os.path.join(base_path, filename)).get_texture()
                     self.textures[name] = texture
-                    if name in ["tundra","snow","taiga","forest","plains","savanna","desert","jungle","grass","dirt","stone","water"]:
+                    if name in ["tundra","snow","taiga","forest","plains","savanna","desert","jungle","grass","dirt","stone","sea_floor"]:
                         self.biome_textures[name] = texture
                     print(f"[Textures] Chargée : {name}")
                 except Exception as e:

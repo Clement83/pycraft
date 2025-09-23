@@ -62,7 +62,7 @@ class Animals:
         # Filter out animals that are too far, and mark for rebuild if any are removed
         initial_animal_count = len(self.active_animals)
         self.active_animals = [
-            animal for animal in self.active_animals 
+            animal for animal in self.active_animals
             if math.hypot(animal.x - player_x, animal.z - player_z) < max_dist
         ]
         if len(self.active_animals) < initial_animal_count:
@@ -90,7 +90,7 @@ class Animals:
                 continue # No animals where there are trees
 
             if h < 0:
-                biome = "water"
+                biome = "sea_floor"
 
             animal_texture_path = self.get_animal_type_for_biome(biome)
             if animal_texture_path:
@@ -117,10 +117,10 @@ class Animals:
         # This method will build the combined mesh for all active animals
         # Similar logic to World.build_sprite_mesh but for animals only
         vertex_data_by_texture = {}
-        
+
         sprite_tex_coords = (0, 0, 1, 0, 1, 1, 0, 1)
         sprite_indices_template = (0, 1, 2, 0, 2, 3)
-        
+
         y_offset = -0.5 # Animals are typically on the ground
 
         for animal in self.active_animals:
@@ -134,7 +134,7 @@ class Animals:
             # Logic for animals (single oriented plane)
             velocity = animal.velocity
             vx, _, vz = velocity
-            
+
             # Calculate rotation angle on Y axis
             if abs(vx) > 0.01 or abs(vz) > 0.01:
                 angle = math.atan2(vx, vz)
@@ -158,13 +158,13 @@ class Animals:
 
             if texture not in vertex_data_by_texture:
                 vertex_data_by_texture[texture] = {'positions': [], 'tex_coords': [], 'indices': [], 'colors': [], 'count': 0}
-            
+
             mesh_data = vertex_data_by_texture[texture]
             vc = mesh_data['count']
 
             for vert in rotated_vertices:
                 mesh_data['positions'].extend(vert)
-            
+
             mesh_data['tex_coords'].extend(sprite_tex_coords)
             mesh_data['colors'].extend((1.0, 1.0, 1.0) * 4)
             mesh_data['indices'].extend((vc + i for i in sprite_indices_template))
@@ -186,7 +186,7 @@ class Animals:
         # Create new batches
         for texture, mesh_data in vertex_data_by_texture.items():
             if not mesh_data['indices']: continue
-            
+
             # Create a new batch for this texture
             batch = pyglet.graphics.Batch()
             self.program.vertex_list_indexed(

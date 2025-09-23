@@ -69,8 +69,8 @@ class World:
                         block_type_base = "dirt"
 
                     if h < 0:
-                        block_type_top = "water"
-                        block_type_base = "water"
+                        block_type_top = "sea_floor"
+                        block_type_base = "sea_floor"
 
                     # Generate the surface block
                     chunk_blocks[(x, h, z)] = block_type_top
@@ -90,7 +90,7 @@ class World:
 
                     # Fill downwards from the surface to seal any side-holes
                     for y in range(h - 1, min_neighbor_h - 1, -1):
-                        chunk_blocks[(x, y, z)] = block_type_base if y >= 0 else "water"
+                        chunk_blocks[(x, y, z)] = block_type_base if y >= 0 else "sea_floor"
 
             # Carve caves using 3D noise
             for pos in list(chunk_blocks.keys()):
@@ -273,10 +273,10 @@ class World:
         biome = biome_info["name"]
 
         if y == h:
-            block_type = biome if h >= 0 else "water"
+            block_type = biome if h >= 0 else "sea_floor"
         else: # y < h
             if h < 0:
-                block_type = "water"
+                block_type = "sea_floor"
             elif biome in ["desert", "savanna"]:
                 block_type = biome
             elif biome in ["tundra", "snow", "taiga"]:
@@ -565,7 +565,7 @@ class World:
         height_at_center = self.get_height(center_x, center_z)
 
         if height_at_center < 0:
-            return "water"
+            return "sea_floor"
 
         return self.get_biome_name(center_x, center_z)
 

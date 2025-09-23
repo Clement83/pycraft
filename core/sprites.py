@@ -15,10 +15,10 @@ class Sprites:
     def hash_noise(self, x, z, seed):
         r = random.Random((x * 73856093) ^ (z * 19349663) ^ seed)
         return r.random()  # entre 0 et 1
-        
+
     def has_sprite(self, x, z, h, biome):
         """Decides if a sprite should be placed here based on noise and biome."""
-        
+
         if self.vegetation.has_tree(x, z, biome):
             return False # No sprites where there are trees
 
@@ -87,8 +87,8 @@ class Sprites:
 
         # Cas spécial : sous l'eau -> forcer biome = water
         if ground_y < 0:
-            biome = "water"
-        
+            biome = "sea_floor"
+
         if ground_y == -1:
             biome = "plage"
 
@@ -100,7 +100,7 @@ class Sprites:
 
         # Sélection déterministe via bruit
         if x is not None and z is not None:
-            val = self.hash_noise(x, z, self.seed + 100) 
+            val = self.hash_noise(x, z, self.seed + 100)
             idx = int(val * len(textures_for_biome)) % len(textures_for_biome)
             chosen = textures_for_biome[idx]
         else:

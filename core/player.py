@@ -44,7 +44,7 @@ class Player:
         # Player's feet are at y, water level is at 0. So if y <= -1, player is in water.
         # Also check if the block at player's feet is water
         feet_block_pos = (round(self.position[0]), math.floor(self.position[1]), round(self.position[2]))
-        is_in_water_block = world.blocks.get(feet_block_pos) == 'water'
+        is_in_water_block = world.blocks.get(feet_block_pos) == 'sea_floor'
 
         was_swimming = self.is_swimming # Store previous state
 
@@ -52,7 +52,7 @@ class Player:
         # Player's feet are at y, water level is at 0. So if y <= -1, player is in water.
         # Also check if the block at player's feet is water
         feet_block_pos = (round(self.position[0]), math.floor(self.position[1]), round(self.position[2]))
-        is_in_water_block = world.blocks.get(feet_block_pos) == 'water'
+        is_in_water_block = world.blocks.get(feet_block_pos) == 'sea_floor'
 
         # Swimming condition: player's eyes are at or below water level (y=0)
         if self.position[1] + EYE_HEIGHT < 0:
@@ -150,7 +150,6 @@ class Player:
             dy = self.velocity_y * dt
 
             self._collide_and_move(dx, dy, dz, world)
-
     def _collide_and_move(self, dx, dy, dz, world):
         x, y, z = self.position
         w = PLAYER_WIDTH / 2
